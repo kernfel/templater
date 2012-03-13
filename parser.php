@@ -38,19 +38,20 @@ class FBK_Parser {
 
 					$c = fgetc($tpl);
 					if ( '!' == $c ) {
+						$c = fgetc($tpl) . fgetc($tpl);
+						if ( '--' == $c )
+							$state = 'comment';
+						else
+							$state = 'DTD';
 						$passthru = true;
 						$next = '>';
-						$state = 'DTD';
-						echo '<!';
+						$bucket = '';
+						echo '<!' . $c;
 					} elseif ( '?' == $c ) {
 						$passthru = false;
 						$next = '>';
 						$state = 'PI';
-					} elseif ( '-' == $c ) { // Assume comment <-- on incomplete start tag <-
-						$passthru = true;
-						$next = '>';
-						$state = 'comment';
-						echo '<-';
+						$bucket = '';
 					} elseif ( '/' == $c ) {
 						$name = '';
 						while ( preg_match( '/[a-zA-Z0-9_:]/', $c = fgetc($tpl) ) )
@@ -110,6 +111,7 @@ class FBK_Parser {
 						$passthru = false;
 						$next = '<';
 						$state = false;
+						$bucket = '';
 						echo $c;
 					} elseif ( 'PI' == $state ) {
 						if ( '?' == substr( $bucket, -1 ) ) {
@@ -122,11 +124,13 @@ class FBK_Parser {
 							$passthru = false;
 							$next = '<';
 							$state = false;
+							echo $c;
 						}
 						$bucket = '';
 					}
 				}
 			} elseif ( $passthru ) {
+				$bucket .= $c;
 				echo $c;
 			} else {
 				$bucket .= $c;
