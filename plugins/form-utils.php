@@ -1,7 +1,9 @@
 <?php
-	require_once( 'default-handlers.php' );
 
-class FBK_Form_Utils extends FBK_Form_Handler {
+require_once( 'form-basics.php' );
+register_plugin( 'form-extended', 'FBK_Form_Utils' );
+
+class FBK_Form_Utils extends FBK_Form_Basics {
 	public $version = '1a1';
 
 	function get_handlers() {

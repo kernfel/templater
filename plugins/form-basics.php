@@ -1,5 +1,7 @@
 <?php
 
+register_plugin( 'form-basics', 'FBK_Form_Basics' );
+
 /**
  * A set of handlers to parse basic form elements (input, select, textarea).
  */

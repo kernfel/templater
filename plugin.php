@@ -57,4 +57,20 @@ abstract class FBK_Handler_Plugin {
 		$this->struct_var = "\$struct['$this->parse_key']";
 	}
 }
+
+/**
+ * Register a plugin class or set of classes through this function.
+ * Registered plugins are available for simple loading by feature name through load(), see core.php
+ */
+function register_plugin( $feature, $classname ) {
+	global $fbk_registered_plugins;
+
+	$classnames = (array) $classname;
+
+	if ( ! array_key_exists( $feature, $fbk_registered_plugins ) ) {
+		$fbk_registered_plugins[$feature] = $classnames;
+	} else {
+		$fbk_registered_plugins[$feature] = array_unique( array_merge( $fbk_registered_plugins[$feature], $classnames ) );
+	}
+}
 ?>
