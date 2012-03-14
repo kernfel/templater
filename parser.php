@@ -12,10 +12,24 @@ class FBK_Parser {
 
 	protected $void_elements;
 
-	public function __construct( $source, $target, $handlers ) {
+	protected $target, $header;
+
+	public function __construct( $source, $target, $header, $handlers ) {
 		$this->handlers = $handlers;
 		$this->void_elements = $this->get_void_elements();
 
+		$this->header = fopen( $header, 'wb' );
+
+		$this->parse( $source, $target );
+
+		fclose( $this->header );
+	}
+
+	public function add_header( $content ) {
+		fwrite( $this->header, $content );
+	}
+
+	protected function parse( $source, $target ) {
 		$tpl = fopen( $source, 'rb' );
 
 		$this->target = fopen( $target, 'wb' );
@@ -142,7 +156,7 @@ class FBK_Parser {
 		fclose( $this->target );
 	}
 
-	function get_void_elements() {
+	protected function get_void_elements() {
 		return array(
 			'area',
 			'base',
@@ -168,7 +182,7 @@ class FBK_Parser {
 		return '';
 	}
 
-	function start_el( $name, $attrib = array() ) {
+	protected function start_el( $name, $attrib = array() ) {
 		$this->close_nonvoid_start_tag();
 
 		$el = compact( 'name', 'attrib' );
@@ -251,7 +265,7 @@ class FBK_Parser {
 			$this->mute = true;
 	}
 
-	function end_el( $name ) {
+	protected function end_el( $name ) {
 		$el = array_pop( $this->parents );
 
 		if ( $this->mute ) {
@@ -297,7 +311,7 @@ class FBK_Parser {
 		echo $el['after_end_el'];
 	}
 
-	function cdata( $cdata ) {
+	protected function cdata( $cdata ) {
 		if ( $this->mute )
 			return;
 

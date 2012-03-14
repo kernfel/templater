@@ -5,8 +5,7 @@ class FBK_Templater {
 	public $template_file;
 	public $cache_dir;
 
-	protected $compiled_file;
-	protected $data_file;
+	protected $compiled_file, $data_file, $header_file;
 
 	public $data;
 
@@ -89,6 +88,7 @@ class FBK_Templater {
 		if ( ! $this->is_parsed )
 			$this->parse();
 		$struct = $this->data;
+		include( $this->header_file );
 		include( $this->compiled_file );
 	}
 
@@ -105,7 +105,7 @@ class FBK_Templater {
 			}
 		}
 
-		$parser = new FBK_Parser( $this->template_file, $this->compiled_file, $this->handlers );
+		$parser = new FBK_Parser( $this->template_file, $this->compiled_file, $this->header_file, $this->handlers );
 		$this->data = $parser->data;
 		file_put_contents( $this->data_file, serialize( $this->data ) );
 		$this->is_parsed = true;
@@ -139,6 +139,7 @@ class FBK_Templater {
 			$filename = $m[1];
 			$this->compiled_file = $this->cache_dir . '/' . $filename . '.compiled';
 			$this->data_file = $this->cache_dir . '/' . $filename . '.data';
+			$this->header_file = $this->cache_dir . '/' . $filename . '.header';
 			$stale =
 				   filemtime( $this->template_file ) > $m[0]
 				|| ! is_readable( $this->compiled_file )
@@ -159,6 +160,7 @@ class FBK_Templater {
 
 			$this->compiled_file = $this->cache_dir . '/' . $filename . '.compiled';
 			$this->data_file = $this->cache_dir . '/' . $filename . '.data';
+			$this->header_file = $this->cache_dir . '/' . $filename . '.header';
 
 			$stale = true;
 		}
