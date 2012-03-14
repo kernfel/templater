@@ -81,7 +81,7 @@ class FBK_Parser {
 							while ( '>' != $c = fgetc($tpl) )
 								;
 						$name = strtolower( $name );
-						while ( false !== $end = array_pop($elements) ) {
+						while ( null !== $end = array_pop($elements) ) {
 							$this->end_el( $end );
 							if ( strtolower($end) == $name )
 								break;
@@ -109,6 +109,9 @@ class FBK_Parser {
 									$quote = fgetc($tpl);
 									while ( $quote != $c = fgetc($tpl) )
 										$attrib[$key] .= $c;
+								} elseif ( '>' == $c ) {
+									// empty attribute just before the closing >
+									break;
 								}
 							}
 							$c = fgetc($tpl);
