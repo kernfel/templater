@@ -138,8 +138,8 @@ class FBK_Parser {
 							$passthru = false;
 							$next = '<';
 							$state = false;
-							echo $c;
 						}
+						echo $c;
 						$bucket = '';
 					}
 				}
