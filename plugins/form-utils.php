@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1a7';
+	public $version = '1a8';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -18,7 +18,8 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			array( 'cdata', 'mail', 'mail_cdata' ),
 			array( 'end_el', 'mail', 'mail_end_el' ),
 			array( 'start_el', 'recaptcha', 'recaptcha' ),
-			array( 'attribute', 'validate', 'validate' )
+			array( 'attribute', 'validate', 'validate' ),
+			array( 'attribute', 'carry', 'carry' )
 		));
 	}
 
@@ -302,9 +303,21 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			 . htmlspecialchars_decode($element['attrib']['options']) . '};</script>';
 		}
 
+		$element['before_start_el'] = "<?php if ( empty({$this->inst_var}['__recaptcha']) ) : ?>";
+		$element['after_end_el'] = "<?php else : ?><input type='hidden' name='__recaptcha' value='1' /><?php endif; ?>";
+
 		return $element;
 	}
 
+	/**
+	 * Attribute "validate" on <form> elements
+	 * Forces form validation on submission.
+	 * Specify validate="file" to redirect to a different file upon successful validation. Specify the file in the action attribute.
+	 *  Note that the action attribute will be treated as a local path, and the target file is automatically parsed using the previous
+	 *  templater settings.
+	 * [NYI, pending multipage implementation:] Specify validate="page" to validate in-situ and move to the next page. By default,
+	 *  pages are sorted by order of appearance in the document. To sort manually, provide an "order" attribute with comma-separated page names.
+	 */
 	function validate( &$parser, $element, $type ) {
 		if ( 'form' != strtolower($element['name']) || ! in_array( $type, array('page','file') ) )
 			return;
@@ -325,15 +338,22 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $element;
 	}
 
-	static public function do_validate( &$templater, $data, $struct, $extra, $redirect ) {
+	static public function do_validate( &$templater, &$data, $struct, $extra, $redirect ) {
 		$invalid = array();
 
-		if ( $redirect && ( empty($data['__validate']) || htmlspecialchars_decode($data['__validate']) != $templater->template_file ) )
-			return $invalid;
-#		elseif ( ! $redirect && ... ) // Pending page implementation
-#			return $invalid;
+		if ( isset($data['__validate']) ) {
+			$validate = $data['__validate'];
+			unset( $data['__validate'] );
+		}
 
-		if ( isset($struct['__recaptcha']) && isset($data['recaptcha_challenge_field']) ) {
+		if ( $redirect && ( empty($validate) || htmlspecialchars_decode($validate) != $templater->template_file ) ) {
+			return $invalid;
+#		} elseif ( ! $redirect && ... ) { // Pending page implementation
+#			return $invalid;
+		}
+
+
+		if ( isset($struct['__recaptcha']) && empty($data['__recaptcha']) && isset($data['recaptcha_challenge_field']) ) {
 			require_once( dirname(__FILE__) . '/inc/recaptchalib.php' );
 			$resp = recaptcha_check_answer(
 				$struct['__recaptcha'],
@@ -342,7 +362,10 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 				$data['recaptcha_response_field']
 			);
 			if ( ! $resp->is_valid )
-				$invalid['__recaptcha'] = true;
+				$invalid['__recaptcha'] = 'recaptcha';
+			else
+				$data['__recaptcha'] = 1;
+			unset( $data['recaptcha_challenge_field'], $data['recaptcha_response_field'] );
 		}
 
 		foreach ( $struct as $field_name => $field ) {
@@ -363,6 +386,71 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 
 		return $invalid;
+	}
+
+	/**
+	 * Attribute "carry" on <form> elements
+	 * Specify carry="hidden" to carry data across several pages or files in hidden inputs.
+	 * Specify carry="session" to carry data into $_SESSION (and thence back). Optionally, add an attribute "sessname" to name the session.
+	 * Note that carry="session" conflicts with any other sessions. Use with caution.
+	 * Note also that all data accessible to this plugin will be carried over. This may be more or less than you expected.
+	 */
+	function carry( &$parser, $element, $carry ) {
+		if ( 'form' != strtolower($element['name']) || ! in_array( $carry, array('hidden','session') ) )
+			return;
+
+		$element['remove_attrib'] = array( 'carry' );
+
+		$class = get_class();
+		if ( 'hidden' == $carry ) {
+			$element['after_start_el'] .= "<?php $class::insert_carry( $this->struct_var, $this->inst_var ); ?>";
+		} elseif ( 'session' == $carry ) {
+			if ( isset($element['attrib']['sessname']) ) {
+				$parser->add_header( "<?php $class::session_start( $this->inst_var, '" . $element['attrib']['sessname'] . "' ); ?>", -10 );
+				$element['remove_attrib'][] = 'sessname';
+				@$element['before_end_el'] .= '<input type="hidden" name="' . $element['attrib']['sessname'] . '" value="<?php echo session_id(); ?>" />';
+			} else {
+				$parser->add_header( "<?php $class::session_start( $this->inst_var ); ?>", -10 );
+				@$element['before_end_el'] .= '<input type="hidden" name="<?php echo session_name(); ?>" value="<?php echo session_id(); ?>" />';
+			}
+
+			$parser->add_header( "<?php $class::session_write( $this->inst_var ); ?>", 10 );
+		}
+
+		return $element;
+	}
+
+	static public function insert_carry( $struct_var, $inst_var ) {
+		// Pending multipage implementation
+		foreach ( array_diff_key( $inst_var, $struct_var ) as $key => $value ) {
+			if ( isset( $inst_var[$key] ) ) {
+				if ( is_array( $inst_var[$key] ) )
+					foreach ( $inst_var[$key] as $value )
+						echo '<input type="hidden" name="' . $key . '[]" value="' . htmlspecialchars($value) . '" />';
+				else
+					echo '<input type="hidden" name="' . $key . '" value="' . htmlspecialchars($inst_var[$key]) . '" />';
+			}
+		}
+	}
+
+	static public function session_start( &$data, $sessname = false ) {
+		global $session_started;
+		if ( empty($session_started) ) {
+			ini_set( 'session.use_trans_sid', false );
+			if ( $sessname )
+				session_name( $sessname );
+			session_start();
+			$session_started = true;
+		}
+
+		foreach ( $_SESSION as $key => $value )
+			if ( ! isset($data[$key]) )
+				$data[$key] = $value;
+	}
+
+	static public function session_write( &$data ) {
+		foreach ( $data as $key => $value )
+			$_SESSION[$key] = $value;
 	}
 }
 ?>
