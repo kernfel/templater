@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1a4';
+	public $version = '1a7';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -17,7 +17,8 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			array( 'start_el', 'mail', 'mail_start_el' ),
 			array( 'cdata', 'mail', 'mail_cdata' ),
 			array( 'end_el', 'mail', 'mail_end_el' ),
-			array( 'start_el', 'recaptcha', 'recaptcha' )
+			array( 'start_el', 'recaptcha', 'recaptcha' ),
+			array( 'attribute', 'validate', 'validate' )
 		));
 	}
 
@@ -293,7 +294,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$dir = dirname(__FILE__) . '/inc';
 		$parser->add_header( "<?php require_once( '$dir/recaptchalib.php' ); ?>" );
-		$this->recaptcha_privatekey = $element['attrib']['privatekey'];
+		$parser->data[$this->parse_key]['__recaptcha'] = $element['attrib']['privatekey'];
 		$element['before_end_el'] = "<?php echo recaptcha_get_html( '" . $element['attrib']['publickey'] . "' ); ?>";
 
 		if ( isset($element['attrib']['options']) ) {
@@ -302,6 +303,66 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 
 		return $element;
+	}
+
+	function validate( &$parser, $element, $type ) {
+		if ( 'form' != strtolower($element['name']) || ! in_array( $type, array('page','file') ) )
+			return;
+
+		$class = get_class();
+
+		if ( 'file' == $type ) {
+			$parser->add_header( "<?php \$invalid = $class::do_validate( \$templater, $this->inst_var, $this->struct_var, '" . $element['attrib']['action'] . "', true ); ?>" );
+			@$element['before_end_el'] .= '<input type="hidden" name="__validate" value="' . htmlspecialchars($parser->templater->template_file) . '" />';
+		} elseif ( 'page' == $type ) {
+			$parser->add_header( "<?php \$invalid = $class::do_validate( \$templater, $this->inst_var, $this->struct_var, '" . @$element['attrib']['order'] . "', false ); ?>" );
+			// onpage field must be set per page
+		}
+
+		$element['alter_attrib'] = array( 'action' => '' );
+		$element['remove_attrib'] = 'validate';
+
+		return $element;
+	}
+
+	static public function do_validate( &$templater, $data, $struct, $extra, $redirect ) {
+		$invalid = array();
+
+		if ( $redirect && ( empty($data['__validate']) || htmlspecialchars_decode($data['__validate']) != $templater->template_file ) )
+			return $invalid;
+#		elseif ( ! $redirect && ... ) // Pending page implementation
+#			return $invalid;
+
+		if ( isset($struct['__recaptcha']) && isset($data['recaptcha_challenge_field']) ) {
+			require_once( dirname(__FILE__) . '/inc/recaptchalib.php' );
+			$resp = recaptcha_check_answer(
+				$struct['__recaptcha'],
+				$_SERVER['REMOTE_ADDR'],
+				$data['recaptcha_challenge_field'],
+				$data['recaptcha_response_field']
+			);
+			if ( ! $resp->is_valid )
+				$invalid['__recaptcha'] = true;
+		}
+
+		foreach ( $struct as $field_name => $field ) {
+			if ( is_array( $field ) ) {
+				if ( ! empty($field['required']) && empty($data[$field_name]) )
+					$invalid[$field_name] = 'required';
+				elseif ( ! empty($field['pattern']) && ! preg_match( '/^(?:' . addcslashes($field['pattern'],'/') . ')$/' ) )
+					$invalid[$field_name] = 'pattern';
+			}
+		}
+
+		if ( empty($invalid) ) {
+			if ( $redirect ) {
+				$templater->redirect( $extra );
+			} else {
+				// page++ according to $extra or natural order
+			}
+		}
+
+		return $invalid;
 	}
 }
 ?>
