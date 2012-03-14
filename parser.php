@@ -3,6 +3,7 @@
 class FBK_Parser {
 
 	public $handlers;
+	public $templater;
 
 	public $data = array();
 	public $parents = array();
@@ -14,7 +15,8 @@ class FBK_Parser {
 
 	protected $target, $header;
 
-	public function __construct( $source, $target, $header, $handlers ) {
+	public function __construct( &$templater, $source, $target, $header, $handlers ) {
+		$this->templater = $templater;
 		$this->handlers = $handlers;
 		$this->void_elements = $this->get_void_elements();
 

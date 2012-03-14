@@ -9,7 +9,7 @@ class FBK_Templater {
 
 	public $data;
 
-	protected $is_parsed = false;
+	protected $is_parsed = false, $redirect;
 
 	protected $handlers = array();
 
@@ -84,11 +84,32 @@ class FBK_Templater {
 		$this->handlers[$type][ strtolower($trigger) ] = compact( 'handler', 'version' );
 	}
 
+	/**
+	 * Redirect to a different file during the header stage of instantiation.
+	 * The old header will run its course, then the new file is parsed with the original parameters and handlers.
+	 * Subsequently, the new header and file body are included.
+	 * Note that it is entirely possible to run into an infinite redirection loop.
+	 */
+	public function redirect( $new_file ) {
+		$realpath = realpath($new_file);
+		if ( $realpath == $this->template_file )
+			return;
+
+		$this->is_parsed = false;
+		$this->template_file = $realpath;
+		$this->redirect = true;
+	}
+
 	public function instantiate( $data ) {
-		if ( ! $this->is_parsed )
-			$this->parse();
-		$struct = $this->data;
-		include( $this->header_file );
+		$templater =& $this;
+
+		do {
+			if ( ! $this->is_parsed )
+				$this->parse();
+			$this->redirect = false;
+			include( $this->header_file );
+		} while ( $this->redirect );
+
 		include( $this->compiled_file );
 	}
 
@@ -105,7 +126,7 @@ class FBK_Templater {
 			}
 		}
 
-		$parser = new FBK_Parser( $this->template_file, $this->compiled_file, $this->header_file, $this->handlers );
+		$parser = new FBK_Parser( $this, $this->template_file, $this->compiled_file, $this->header_file, $this->handlers );
 		$this->data = $parser->data;
 		file_put_contents( $this->data_file, serialize( $this->data ) );
 		$this->is_parsed = true;

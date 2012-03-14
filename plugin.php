@@ -54,7 +54,7 @@ abstract class FBK_Handler_Plugin {
 	}
 
 	protected function set_struct_var() {
-		$this->struct_var = "\$struct['$this->parse_key']";
+		$this->struct_var = "\$templater->data['$this->parse_key']";
 	}
 }
 
