@@ -15,20 +15,25 @@ class FBK_Parser {
 
 	protected $target, $header;
 
+	protected $header_insertions = array();
+
 	public function __construct( &$templater, $source, $target, $header, $handlers ) {
 		$this->templater = $templater;
 		$this->handlers = $handlers;
 		$this->void_elements = $this->get_void_elements();
 
-		$this->header = fopen( $header, 'wb' );
-
 		$this->parse( $source, $target );
 
-		fclose( $this->header );
+		$header = fopen( $header, 'wb' );
+		ksort( $this->header_insertions );
+		foreach ( $this->header_insertions as $inserts )
+			foreach ( $inserts as $insert )
+				fwrite( $header, $insert );
+		fclose( $header );
 	}
 
-	public function add_header( $content ) {
-		fwrite( $this->header, $content );
+	public function add_header( $content, $priority = 0 ) {
+		$this->header_insertions[$priority][] = $content;
 	}
 
 	protected function parse( $source, $target ) {
