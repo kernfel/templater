@@ -8,13 +8,16 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
+	protected $recaptcha_privatekey = false;
+
 	function get_handlers() {
 		return array_merge( parent::get_handlers(), array(
 			array( 'start_el', 'output', 'output' ),
 			array( 'start_el', 'csv', 'csv' ),
 			array( 'start_el', 'mail', 'mail_start_el' ),
 			array( 'cdata', 'mail', 'mail_cdata' ),
-			array( 'end_el', 'mail', 'mail_end_el' )
+			array( 'end_el', 'mail', 'mail_end_el' ),
+			array( 'start_el', 'recaptcha', 'recaptcha' )
 		));
 	}
 
@@ -266,6 +269,39 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 
 		mail( $args['to'], $args['subject'], $message, $headers );
+	}
+
+	/**
+	 * Element <recaptcha publickey="..." privatekey="..." [options="..."] />
+	 *
+	 * Displays a reCaptcha. Be sure to provide the recaptchalib.php in the plugins/inc/ directory.
+	 *
+	 * @attrib publickey, privatekey: API keys
+	 * @attrib options (optional): Options JSON, e.g. "theme: 'theme_name', lang: 'en'".
+	 */
+	function recaptcha( &$parser, $element ) {
+		$element['suppress_tags'] = true;
+		$element['suppress_nested'] = true;
+
+		if ( ! isset($element['attrib']['publickey']) || ! isset($element['attrib']['privatekey']) ) {
+			trigger_error( 'Element <recaptcha> missing required attributes publickey and/or privatekey', E_USER_WARNING );
+			return $element;
+		} elseif ( ! $this->in_form ) {
+			trigger_error( 'Suppressed <recaptcha> element outside of a form', E_USER_NOTICE );
+			return $element;
+		}
+
+		$dir = dirname(__FILE__) . '/inc';
+		$parser->add_header( "<?php require_once( '$dir/recaptchalib.php' ); ?>" );
+		$this->recaptcha_privatekey = $element['attrib']['privatekey'];
+		$element['before_end_el'] = "<?php echo recaptcha_get_html( '" . $element['attrib']['publickey'] . "' ); ?>";
+
+		if ( isset($element['attrib']['options']) ) {
+			$element['after_start_el'] = '<script type="text/javascript">var RecaptchaOptions = {'
+			 . htmlspecialchars_decode($element['attrib']['options']) . '};</script>';
+		}
+
+		return $element;
 	}
 }
 ?>
