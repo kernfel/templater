@@ -102,7 +102,7 @@ class FBK_Parser {
 								$void = true;
 							} elseif ( ! in_array( $c, $ws ) ) {
 								$key = $c;
-								while ( preg_match( '/[a-zA-Z0-9_]/', $c = fgetc($tpl) ) )
+								while ( preg_match( '/[a-zA-Z0-9_-]/', $c = fgetc($tpl) ) )
 									$key .= $c;
 								$attrib[$key] = '';
 								if ( '=' == $c ) {
