@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1a11';
+	public $version = '1a12';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -24,7 +24,8 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			array( 'attribute', 'ifnotvalid', 'ifnotvalid' ),
 			array( 'attribute', 'carry', 'carry' ),
 			array( 'attribute', 'page', 'page_start' ),
-			array( 'attribute', 'pageorder', 'page_order' )
+			array( 'attribute', 'pageorder', 'page_order' ),
+			array( 'attribute', 'topage', 'topage' )
 		));
 	}
 
@@ -350,6 +351,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 	static public function do_validate( &$templater, &$data, $parse_key, $redirect = false ) {
 		$invalid = array();
+		$nopaging = false;
 
 		// Do not validate a non-submission
 		if ( $redirect && ( empty($data['__validate']) || htmlspecialchars_decode($data['__validate']) != $templater->template_file ) ) {
@@ -360,8 +362,10 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 
 		$struct_keys = array( $parse_key );
-		if ( $data['__page'] )
+		if ( ! empty($data['__page']) ) {
 			$struct_keys[] = $parse_key . '_page_' . $data['__page'];
+			$data['__frompage'] = $data['__page'];
+		}
 
 		foreach ( array_intersect_key( $templater->data, array_flip($struct_keys) ) as $struct ) {
 			if ( isset($struct['__recaptcha']) && empty($data['__recaptcha']) && isset($data['recaptcha_challenge_field']) ) {
@@ -387,6 +391,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 						$invalid[$field_name] = 'pattern';
 				}
 			}
+
+			if ( ! $nopaging && isset($struct['__topage_triggers']) && array_intersect_key( $struct['__topage_triggers'], $data ) )
+				$nopaging = true;
 		}
 
 		if ( empty($invalid) ) {
@@ -396,7 +403,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 				$key = array_search( $data['__page'], $templater->data[$parse_key]['__pages'] );
 				if ( isset($templater->data[$parse_key]['__pages'][++$key]) )
 					$data['__page'] = $templater->data[$parse_key]['__pages'][$key];
-				else
+				elseif ( ! $nopaging )
 					trigger_error( 'Could not find a following page. Make sure not to submit from the last page!', E_USER_NOTICE );
 			}
 		}
@@ -577,7 +584,146 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 				$element = $r;
 			@$element['before_end_el'] .= '<input type="hidden" name="__page" value="<?php echo ' . $this->inst_var . '["__page"]; ?>" />';
 			$parser->data[$this->parse_key]['__nocarry'][] = '__page';
+			$parser->data[$this->parse_key]['__nocarry'][] = '__frompage';
 			return $element;
+		}
+	}
+
+	/**
+	 * Attribute "topage" universal
+	 * Convert element into a paging control.
+	 * You can provide either a page ID in the attribute value, or leave the attribute value blank
+	 *  to let the element's value decide (eg for text inputs or selects as versatile page switchers).
+	 * Instead of a page ID, you can also provide relative values, eg "+2" or "-1".
+	 * When added to an input of sorts (<input> of any type except reset, <select>) nested inside a <form>,
+	 *  the presence of the input's submit value triggers the relevant page change.
+	 *  This means that non-submitting inputs need to provide their own submission mechanism (eg an "onblur" attribute).
+	 * When added to any other element type, or outside of a <form> element, an "onclick" handler is added to the element.
+	 *  If there are multiple forms in the document, specify the name of the relevant form via the additional "form" parameter.
+	 */
+	function topage( &$parser, $element, $value ) {
+		static $unnamed_index = 0;
+
+		$element['remove_attrib'] = array( 'topage' );
+
+		if (
+		 $this->in_form
+		 && in_array( strtolower($element['name']), array('input', 'select') )
+		 && ! ( 'input' == strtolower($element['name']) && isset($element['attrib']['type']) && 'reset' == strtolower($element['attrib']['type']) )
+		) {
+			if ( isset($element['attrib']['name']) ) {
+				$name = $element['attrib']['name'];
+			} else {
+				$name = '__topage_f' . $unnamed_index++;
+				$element['add_attrib'] = array( 'name' => $name );
+			}
+		} else {
+			$name = '__topage';
+			if ( isset($element['attrib']['form']) ) {
+				$form = "'" . $element['attrib']['form'] . "'";
+				$element['remove_attrib'][] = 'form';
+			} else {
+				$form = 0;
+			}
+			$element['add_attrib'] = array( 'onclick' => "return toPage('$value',$form);" );
+			// Hack into <body>'s dynamic handlers to add a footer script
+			foreach ( $parser->parents as &$p ) {
+				if ( 'body' == strtolower($p['name']) ) {
+					$f = false;
+					foreach ( $p['dynamic_handlers']['end_el'] as $h ) {
+						if ( $this === $h[0] && 'insert_topage_script' == $h[1] ) {
+							$f = true;
+							break;
+						}
+					}
+					if ( ! $f )
+						$p['dynamic_handlers']['end_el'][] = array( &$this, 'insert_topage_script' );
+					unset($p);
+					break;
+				}
+			}
+		}
+
+		$parser->data[ $this->on_page ? $this->parse_key_backup : $this->parse_key ]['__nocarry'][] = $name;
+
+		$class = get_class();
+
+		if ( $this->on_page ) {
+			$pkey_bk = $this->parse_key;
+			$this->parse_key = $this->parse_key_backup;
+			$this->set_struct_var();
+			$pages = $this->struct_var . "['__pages']";
+			foreach ( $this->on_page as $p ) {
+				$this->parse_key = $this->parse_key_backup . '_page_' . $p;
+				$this->set_struct_var();
+				$parser->data[$this->parse_key]['__topage_triggers'][$name] = $value;
+				$parser->add_header( "<?php $class::do_topage($this->struct_var, $this->inst_var, $pages, \$invalid); ?>", 5 );
+			}
+			$this->parse_key = $pkey_bk;
+			$this->set_struct_var();
+		} else {
+			$parser->data[$this->parse_key]['__topage_triggers'][$name] = $value;
+			$parser->add_header( "<?php $class::do_topage($this->struct_var, $this->inst_var, {$this->struct_var}['__pages'], \$invalid); ?>", 5 );
+		}
+
+		return $element;
+	}
+
+	function insert_topage_script( &$parser, $element ) {
+		$element['before_end_el'] .= <<<JS
+<script type="text/javascript">
+	function toPage(p,f){
+		h=document.createElement('input');
+		h.name='__topage';
+		h.value=p;
+		h.type='hidden';
+		document.forms[f].appendChild(h);
+		document.forms[f].submit();
+		return false;
+	}
+</script>
+JS;
+		return $element;
+	}
+
+	static public function do_topage( $struct, &$data, $pages, &$invalid ) {
+		static $paging_done = false;
+		if ( $paging_done )
+			return;
+
+		foreach ( $struct['__topage_triggers'] as $trigger => $value ) {
+			if ( isset( $data[$trigger] ) ) {
+				if ( ! $value )
+					$value = $data[$trigger];
+				if ( preg_match( '/^([+-])(\d+)$/', $value, $matches ) ) {
+					$i = array_search( $data['__frompage'], $pages );
+					if ( '+' == $matches[1] )
+						$i += $matches[2];
+					else
+						$i -= $matches[2];
+					if ( isset($pages[$i]) ) {
+						$page = $pages[$i];
+					} else {
+						trigger_error( "Invalid page index $i caused by paging to '$value' from page '$data[__page]'", E_USER_NOTICE );
+						$page = $data['__page'];
+					}
+				} else {
+					if ( in_array( $value, $pages ) ) {
+						$page = $value;
+					} else {
+						trigger_error( "Page '$value' not found", E_USER_NOTICE );
+						$page = $data['__page'];
+					}
+				}
+
+				// Don't produce non-validation when going backwards
+				if ( array_search( $page, $pages ) < array_search( $data['__frompage'], $pages ) && $invalid )
+					$invalid = array();
+
+				$data['__page'] = $page;
+				$paging_done = true;
+				break;
+			}
 		}
 	}
 }
