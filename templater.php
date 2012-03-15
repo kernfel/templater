@@ -48,6 +48,7 @@ class FBK_Templater {
 	 *		- the attribute value
 	 *		- the attribute key, to disambiguate
 	 *	The handler is expected to return the element with the following optional properties:
+	 *		- add_handler: array( $type => callback ), adds a dynamic end_el or cdata handler to the element, which will be called before the usual handler.
 	 *		- add_attrib: array( $attrib_key => $attrib_value, ... ) to be added to the element
 	 *		- alter_attrib: alias for add_attrib
 	 *		- remove_attrib: array( $attrib_key, ... ) or string, attributes that are to be removed from the element

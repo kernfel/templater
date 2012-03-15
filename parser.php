@@ -217,9 +217,15 @@ class FBK_Parser {
 			'before_end_el' => '',
 			'after_end_el' => '',
 			'suppress_tags' => false,
-			'suppress_nested' => false
+			'suppress_nested' => false,
 		);
-		$el = array_merge( $el, $default, $resp );
+		$override = array(
+			'dynamic_handlers' => array(
+				'cdata' => array(),
+				'end_el' => array()
+			)
+		);
+		$el = array_merge( $el, $default, $resp, $override );
 
 		// Call attribute handlers
 		if ( ! $el['suppress_tags'] ) {
@@ -249,6 +255,13 @@ class FBK_Parser {
 								$el['attrib'][$key] = $val;
 							unset( $resp['add_attrib'] );
 						}
+						if ( isset( $resp['add_handler'] ) ) {
+							foreach ( $resp['add_handler'] as $type => $handler )
+								if ( array_key_exists( $type, $el['dynamic_handlers'] ) )
+									$el['dynamic_handlers'][$type][] = $handler;
+							unset( $resp['add_handler'] );
+						}
+						unset( $resp['dynamic_handlers'] );
 						unset( $resp['attrib'] );
 						$el = array_merge( $el, $resp );
 					}
@@ -283,6 +296,19 @@ class FBK_Parser {
 				return;
 			else
 				$this->mute = false;
+		}
+
+		// Call dynamic handler
+		foreach ( $el['dynamic_handlers']['end_el'] as $dyn_handler ) {
+			if ( is_callable( $dyn_handler ) ) {
+				$resp = call_user_func_array( $dyn_handler, array( &$this, $el, 'end_el' ) );
+				if ( is_array( $resp ) ) {
+					if ( isset( $resp['before_end_el'] ) )
+						$el['before_end_el'] = $resp['before_end_el'];
+					if ( isset( $resp['after_end_el'] ) )
+						$el['after_end_el'] = $resp['after_end_el'];
+				}
+			}
 		}
 
 		// Call element handler
@@ -327,8 +353,31 @@ class FBK_Parser {
 
 		$this->close_nonvoid_start_tag();
 
-		// Call cdata handler
 		$parent = $this->get_current_element();
+
+		// Call dynamic handler
+		if ( $parent ) {
+			foreach ( $parent['dynamic_handlers']['cdata'] as $dyn_handler ) {
+				if ( is_callable( $dyn_handler ) ) {
+					$str = call_user_func_array( $h, array( &$this, $parent, $cdata ) );
+					if ( is_string( $str ) ) {
+						$cdata = $str;
+					} elseif ( is_array( $str ) && isset($str['content']) ) {
+						if ( ! isset($str['position']) ) {
+							$cdata = $str['content'];
+						} elseif ( is_int($str['position']) ) {
+							$cdata = substr_replace( $cdata, $str['content'], $str['position'], 0 );
+						} elseif ( 'before' == $str['position'] ) {
+							$cdata = $str['content'] . $cdata;
+						} else {
+							$cdata .= $str['content'];
+						}
+					}
+				}
+			}
+		}
+
+		// Call cdata handler
 		$trigger = strtolower( $parent['name'] );
 		if ( isset( $this->handlers['cdata'][$trigger] ) && $h = $this->handlers['cdata'][$trigger]['handler'] )
 			$str = call_user_func_array( $h, array( &$this, $parent, $cdata ) );
