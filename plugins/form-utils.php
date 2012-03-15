@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1a8';
+	public $version = '1a9';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -19,6 +19,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			array( 'end_el', 'mail', 'mail_end_el' ),
 			array( 'start_el', 'recaptcha', 'recaptcha' ),
 			array( 'attribute', 'validate', 'validate' ),
+			array( 'attribute', 'ifnotvalid', 'ifnotvalid' ),
 			array( 'attribute', 'carry', 'carry' )
 		));
 	}
@@ -276,7 +277,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	/**
 	 * Element <recaptcha publickey="..." privatekey="..." [options="..."] />
 	 *
-	 * Displays a reCaptcha. Be sure to provide the recaptchalib.php in the plugins/inc/ directory.
+	 * Displays a reCaptcha. Be sure to provide recaptchalib.php in the plugins/inc/ directory.
+	 * Once validated, the recaptcha will be hidden automatically. Validation status can be checked
+	 * via the '__recaptcha' field. (not validated: does not exist; validated: '1')
 	 *
 	 * @attrib publickey, privatekey: API keys
 	 * @attrib options (optional): Options JSON, e.g. "theme: 'theme_name', lang: 'en'".
@@ -386,6 +389,39 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 
 		return $invalid;
+	}
+
+	/**
+	 * Attribute "ifnotvalid" universal
+	 * Display the element only if validation failed.
+	 * Optionally supply one or more field names (separated by commas) in the attribute value to specify which fields to watch.
+	 * Optionally supply one or more failure reasons (separated by commas), e.g. "required", "pattern" or "recaptcha" to specify
+	 *  which failure modes to watch. If fields are given, only those fields will be watched.
+	 * If at least one of the given fields AND at least one of the given reasons applies, the element in question will be displayed.
+	 */
+	function ifnotvalid( &$parser, $element, $field ) {
+		$element['remove_attrib'] = array( 'ifnotvalid' );
+
+		$condition = "!empty(\$invalid)";
+		if ( $field ) {
+			$fields = array_map( 'trim', explode( ',', $field ) );
+			$ff = "array_flip(array('" . implode("','",$fields) . "'))";
+			$invalid_selection = "array_intersect_key(\$invalid,$ff)";
+			$condition .= "&&$invalid_selection";
+		} else {
+			$invalid_selection = '$invalid';
+		}
+
+		if ( isset($element['attrib']['reason']) ) {
+			$reasons = array_map( 'trim', explode( ',', $element['attrib']['reason'] ) );
+			$condition .= "&&array_intersect( $invalid_selection, array('" . implode("','",$reasons) . "') )";
+			$element['remove_attrib'][] = 'reason';
+		}
+
+		@$element['before_start_el'] .= "<?php if( $condition ) : ?>";
+		@$element['after_end_el'] .= "<?php endif; ?>";
+
+		return $element;
 	}
 
 	/**
