@@ -4,11 +4,13 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1a9';
+	public $version = '1a11';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
 	protected $recaptcha_privatekey = false;
+
+	protected $pages = array(), $on_page = false;
 
 	function get_handlers() {
 		return array_merge( parent::get_handlers(), array(
@@ -20,7 +22,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			array( 'start_el', 'recaptcha', 'recaptcha' ),
 			array( 'attribute', 'validate', 'validate' ),
 			array( 'attribute', 'ifnotvalid', 'ifnotvalid' ),
-			array( 'attribute', 'carry', 'carry' )
+			array( 'attribute', 'carry', 'carry' ),
+			array( 'attribute', 'page', 'page_start' ),
+			array( 'attribute', 'pageorder', 'page_order' )
 		));
 	}
 
@@ -298,7 +302,10 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$dir = dirname(__FILE__) . '/inc';
 		$parser->add_header( "<?php require_once( '$dir/recaptchalib.php' ); ?>" );
-		$parser->data[$this->parse_key]['__recaptcha'] = $element['attrib']['privatekey'];
+		$parser->data[$this->parse_key]['__recaptcha'] = array(
+			'type' => 'recaptcha',
+			'privatekey' => $element['attrib']['privatekey']
+		);
 		$element['before_end_el'] = "<?php echo recaptcha_get_html( '" . $element['attrib']['publickey'] . "' ); ?>";
 
 		if ( isset($element['attrib']['options']) ) {
@@ -318,8 +325,8 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	 * Specify validate="file" to redirect to a different file upon successful validation. Specify the file in the action attribute.
 	 *  Note that the action attribute will be treated as a local path, and the target file is automatically parsed using the previous
 	 *  templater settings.
-	 * [NYI, pending multipage implementation:] Specify validate="page" to validate in-situ and move to the next page. By default,
-	 *  pages are sorted by order of appearance in the document. To sort manually, provide an "order" attribute with comma-separated page names.
+	 * Specify validate="page" to validate in-situ and move to the next page, specified through the "pageorder" attribute or through
+	 *  order or appearance in the document.
 	 */
 	function validate( &$parser, $element, $type ) {
 		if ( 'form' != strtolower($element['name']) || ! in_array( $type, array('page','file') ) )
@@ -328,11 +335,11 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		$class = get_class();
 
 		if ( 'file' == $type ) {
-			$parser->add_header( "<?php \$invalid = $class::do_validate( \$templater, $this->inst_var, $this->struct_var, '" . $element['attrib']['action'] . "', true ); ?>" );
+			$parser->add_header( "<?php \$invalid = $class::do_validate( \$templater, $this->inst_var, '$this->parse_key', '" . $element['attrib']['action'] . "' ); ?>" );
 			@$element['before_end_el'] .= '<input type="hidden" name="__validate" value="' . htmlspecialchars($parser->templater->template_file) . '" />';
+			$parser->data[$this->parse_key]['__nocarry'][] = '__validate';
 		} elseif ( 'page' == $type ) {
-			$parser->add_header( "<?php \$invalid = $class::do_validate( \$templater, $this->inst_var, $this->struct_var, '" . @$element['attrib']['order'] . "', false ); ?>" );
-			// onpage field must be set per page
+			$parser->add_header( "<?php \$invalid = $class::do_validate( \$templater, $this->inst_var, '$this->parse_key' ); ?>" );
 		}
 
 		$element['alter_attrib'] = array( 'action' => '' );
@@ -341,42 +348,44 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $element;
 	}
 
-	static public function do_validate( &$templater, &$data, $struct, $extra, $redirect ) {
+	static public function do_validate( &$templater, &$data, $parse_key, $redirect = false ) {
 		$invalid = array();
 
-		if ( isset($data['__validate']) ) {
-			$validate = $data['__validate'];
-			unset( $data['__validate'] );
-		}
-
-		if ( $redirect && ( empty($validate) || htmlspecialchars_decode($validate) != $templater->template_file ) ) {
+		// Do not validate a non-submission
+		if ( $redirect && ( empty($data['__validate']) || htmlspecialchars_decode($data['__validate']) != $templater->template_file ) ) {
 			return $invalid;
-#		} elseif ( ! $redirect && ... ) { // Pending page implementation
-#			return $invalid;
+		} elseif ( ! $redirect && empty($data['__page']) ) {
+			$data['__page'] = reset($templater->data[$parse_key]['__pages']);
+			return $invalid;
 		}
 
+		$struct_keys = array( $parse_key );
+		if ( $data['__page'] )
+			$struct_keys[] = $parse_key . '_page_' . $data['__page'];
 
-		if ( isset($struct['__recaptcha']) && empty($data['__recaptcha']) && isset($data['recaptcha_challenge_field']) ) {
-			require_once( dirname(__FILE__) . '/inc/recaptchalib.php' );
-			$resp = recaptcha_check_answer(
-				$struct['__recaptcha'],
-				$_SERVER['REMOTE_ADDR'],
-				$data['recaptcha_challenge_field'],
-				$data['recaptcha_response_field']
-			);
-			if ( ! $resp->is_valid )
-				$invalid['__recaptcha'] = 'recaptcha';
-			else
-				$data['__recaptcha'] = 1;
-			unset( $data['recaptcha_challenge_field'], $data['recaptcha_response_field'] );
-		}
+		foreach ( array_intersect_key( $templater->data, array_flip($struct_keys) ) as $struct ) {
+			if ( isset($struct['__recaptcha']) && empty($data['__recaptcha']) && isset($data['recaptcha_challenge_field']) ) {
+				require_once( dirname(__FILE__) . '/inc/recaptchalib.php' );
+				$resp = recaptcha_check_answer(
+					$struct['__recaptcha']['privatekey'],
+					$_SERVER['REMOTE_ADDR'],
+					$data['recaptcha_challenge_field'],
+					$data['recaptcha_response_field']
+				);
+				if ( ! $resp->is_valid )
+					$invalid['__recaptcha'] = 'recaptcha';
+				else
+					$data['__recaptcha'] = 1;
+				unset( $data['recaptcha_challenge_field'], $data['recaptcha_response_field'] );
+			}
 
-		foreach ( $struct as $field_name => $field ) {
-			if ( is_array( $field ) ) {
-				if ( ! empty($field['required']) && empty($data[$field_name]) )
-					$invalid[$field_name] = 'required';
-				elseif ( ! empty($field['pattern']) && ! preg_match( '/^(?:' . addcslashes($field['pattern'],'/') . ')$/' ) )
-					$invalid[$field_name] = 'pattern';
+			foreach ( $struct as $field_name => $field ) {
+				if ( is_array( $field ) ) {
+					if ( ! empty($field['required']) && empty($data[$field_name]) )
+						$invalid[$field_name] = 'required';
+					elseif ( ! empty($field['pattern']) && ! preg_match( '/^(?:' . addcslashes($field['pattern'],'/') . ')$/' ) )
+						$invalid[$field_name] = 'pattern';
+				}
 			}
 		}
 
@@ -384,7 +393,11 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			if ( $redirect ) {
 				$templater->redirect( $extra );
 			} else {
-				// page++ according to $extra or natural order
+				$key = array_search( $data['__page'], $templater->data[$parse_key]['__pages'] );
+				if ( isset($templater->data[$parse_key]['__pages'][++$key]) )
+					$data['__page'] = $templater->data[$parse_key]['__pages'][$key];
+				else
+					trigger_error( 'Could not find a following page. Make sure not to submit from the last page!', E_USER_NOTICE );
 			}
 		}
 
@@ -419,7 +432,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 
 		@$element['before_start_el'] .= "<?php if( $condition ) : ?>";
-		@$element['after_end_el'] .= "<?php endif; ?>";
+		$element['after_end_el'] = "<?php endif; ?>" . @$element['after_end_el'];
 
 		return $element;
 	}
@@ -439,7 +452,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$class = get_class();
 		if ( 'hidden' == $carry ) {
-			$element['after_start_el'] .= "<?php $class::insert_carry( $this->struct_var, $this->inst_var ); ?>";
+			$element['after_start_el'] .= "<?php $class::insert_carry( \$templater, '$this->parse_key', $this->inst_var ); ?>";
 		} elseif ( 'session' == $carry ) {
 			if ( isset($element['attrib']['sessname']) ) {
 				$parser->add_header( "<?php $class::session_start( $this->inst_var, '" . $element['attrib']['sessname'] . "' ); ?>", -10 );
@@ -453,18 +466,25 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			$parser->add_header( "<?php $class::session_write( $this->inst_var ); ?>", 10 );
 		}
 
+		if ( ! isset($parser->data[$this->parse_key]['__nocarry']) )
+			$parser->data[$this->parse_key]['__nocarry'] = array();
+
 		return $element;
 	}
 
-	static public function insert_carry( $struct_var, $inst_var ) {
-		// Pending multipage implementation
-		foreach ( array_diff_key( $inst_var, $struct_var ) as $key => $value ) {
-			if ( isset( $inst_var[$key] ) ) {
-				if ( is_array( $inst_var[$key] ) )
-					foreach ( $inst_var[$key] as $value )
-						echo '<input type="hidden" name="' . $key . '[]" value="' . htmlspecialchars($value) . '" />';
+	static public function insert_carry( &$templater, $parse_key, $inst_var ) {
+		$struct_keys = array( $parse_key );
+		if ( isset($inst_var['__page']) )
+			$struct_keys[] = $parse_key . '_page_' . $inst_var['__page'];
+		$carried = array();
+		foreach ( array_intersect_key( $templater->data, array_flip($struct_keys) ) as $struct_var ) {
+			foreach ( array_diff_key( $inst_var, $carried, $struct_var, array_flip($templater->data[$parse_key]['__nocarry']) ) as $key => $value ) {
+				if ( is_array( $value ) )
+					foreach ( $value as $v )
+						echo '<input type="hidden" name="' . $key . '[]" value="' . htmlspecialchars($v) . '" />';
 				else
-					echo '<input type="hidden" name="' . $key . '" value="' . htmlspecialchars($inst_var[$key]) . '" />';
+					echo '<input type="hidden" name="' . $key . '" value="' . htmlspecialchars($value) . '" />';
+				$carried[$key] = true;
 			}
 		}
 	}
@@ -485,8 +505,80 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	}
 
 	static public function session_write( &$data ) {
-		foreach ( $data as $key => $value )
+		foreach ( array_diff_key( $data, array_flip($templater->data[$parse_key]['__nocarry']) ) as $key => $value )
 			$_SESSION[$key] = $value;
+	}
+
+	/**
+	 * Attribute "page" universal
+	 * Display an element only on the given page(s).
+	 * Warning: If used after the form end tag, the page(s) will not be added automatically.
+	 *  Make sure you mention all pages before the form end tag, either through direct use in a page attribute, or in the form's pageorder attribute.
+	 * Warning: Using this attribute on input elements may cause unexpected behaviour. Specifically, fields that require validation will
+	 *  be treated as lying outside a page (although not displayed), which may make it impossible to proceed through the form.
+	 */
+	function page_start( &$parser, $element, $value ) {
+		$element['remove_attrib'] = 'page';
+
+		if ( $this->on_page ) {
+			trigger_error( 'Nested page elements are not supported and may lead to unexpected behaviour', E_USER_WARNING );
+			return $element;
+		} elseif ( ! $value ) {
+			trigger_error( 'Always provide at least one valid page ID with the "page" attribute', E_USER_WARNING );
+			return $element;
+		}
+
+		$pages = array_map( 'trim', explode( ',', $value ) );
+		foreach ( $pages as $page ) {
+			if ( ! $page ) {
+				trigger_error( "Invalid page ID '$page'" );
+				return $element;
+			}
+			if ( ! in_array( $page, $this->pages ) )
+				$this->pages[] = $page;
+		}
+
+		$this->on_page = $pages;
+		$element['add_handler']['end_el'] = array(&$this, 'page_end');
+		$this->parse_key_backup = $this->parse_key;
+		$this->parse_key .= '_page_' . reset($pages);
+		$this->set_struct_var();
+
+		@$element['before_start_el'] .= "<?php if ( isset({$this->inst_var}['__page']) && in_array( {$this->inst_var}['__page'], array('" . implode( "','", $pages ) . "') ) ) : ?>";
+		$element['after_end_el'] = "<?php endif; ?>" . @$element['after_end_el'];
+
+		return $element;
+	}
+
+	function page_end( &$parser, $element ) {
+		$this->on_page = false;
+		$this->parse_key = $this->parse_key_backup;
+		$this->set_struct_var();
+	}
+
+	/**
+	 * Attribute "pageorder" on <form> elements
+	 * Declare as comma-separated list of page IDs.
+	 * Specifies the order of pages in the document. By default, pages will be ordered by appearance in the template.
+	 * Pages that occur in the template but aren't listed in the pageorder attribute will be appended.
+	 */
+	function page_order( &$parser, $element, $value ) {
+		if ( 'form' == strtolower($element['name']) )
+			$this->pages = array_map( 'trim', explode( ',', $value ) );
+	}
+
+	function form( &$parser, $element, $where ) {
+		$r = parent::form( $parser, $element, $where );
+		if ( 'end_el' == $where ) {
+			$parser->data[$this->parse_key]['__pages'] = $this->pages;
+			return $r;
+		} else {
+			if ( $r )
+				$element = $r;
+			@$element['before_end_el'] .= '<input type="hidden" name="__page" value="<?php echo ' . $this->inst_var . '["__page"]; ?>" />';
+			$parser->data[$this->parse_key]['__nocarry'][] = '__page';
+			return $element;
+		}
 	}
 }
 ?>
