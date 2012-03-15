@@ -1,0 +1,3 @@
+- provide add_void_elements for plugins
+- provide document_start multihook to allow plugins to re-initialise
+- Centralise documentation in README
