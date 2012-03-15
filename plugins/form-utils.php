@@ -483,16 +483,18 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		$struct_keys = array( $parse_key );
 		if ( isset($inst_var['__page']) )
 			$struct_keys[] = $parse_key . '_page_' . $inst_var['__page'];
-		$carried = array();
-		foreach ( array_intersect_key( $templater->data, array_flip($struct_keys) ) as $struct_var ) {
-			foreach ( array_diff_key( $inst_var, $carried, $struct_var, array_flip($templater->data[$parse_key]['__nocarry']) ) as $key => $value ) {
-				if ( is_array( $value ) )
-					foreach ( $value as $v )
-						echo '<input type="hidden" name="' . $key . '[]" value="' . htmlspecialchars($v) . '" />';
-				else
-					echo '<input type="hidden" name="' . $key . '" value="' . htmlspecialchars($value) . '" />';
-				$carried[$key] = true;
-			}
+
+		$carry_keys = array_keys( $inst_var );
+		$carry_keys = array_diff( $carry_keys, $templater->data[$parse_key]['__nocarry'] );
+		foreach ( array_intersect_key( $templater->data, array_flip($struct_keys) ) as $struct_var )
+			$carry_keys = array_diff( $carry_keys, array_keys($struct_var) );
+		foreach ( $carry_keys as $key ) {
+			$value = $inst_var[$key];
+			if ( is_array( $value ) )
+				foreach ( $value as $v )
+					echo '<input type="hidden" name="' . $key . '[]" value="' . htmlspecialchars($v) . '" />';
+			else
+				echo '<input type="hidden" name="' . $key . '" value="' . htmlspecialchars($value) . '" />';
 		}
 	}
 
