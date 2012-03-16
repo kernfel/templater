@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1a12';
+	public $version = '1a13';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -57,7 +57,12 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 				$base_output = "isset({$this->inst_var}['$key']) ? {$this->inst_var}['$key'] : ''";
 		} else {
 			$class = get_class();
-			$base_output = "$class::translate( '$key', $this->inst_var, $this->struct_var, '$sep', '$before', '$after', $escape )";
+			if ( $this->on_page ) {
+				$parse_key = $this->parse_key_backup;
+			} else {
+				$parse_key = $this->parse_key;
+			}
+			$base_output = "$class::translate( '$key', $this->inst_var, \$templater, '$parse_key', '$sep', '$before', '$after', $escape )";
 		}
 
 		if ( $this->in_mail )
@@ -68,7 +73,19 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $element;
 	}
 
-	static public function translate( $key, &$data, &$struct, $sep, $before, $after, $escape ) {
+	static public function translate( $key, &$data, &$templater, $parse_key, $sep, $before, $after, $escape ) {
+		static $structs = array();
+		if ( ! isset($structs[$parse_key]) ) {
+			$structs[$parse_key] = $templater->data[$parse_key];
+			$struct_keys = array();
+			if ( ! empty($templater->data[$parse_key]['__pages']) )
+				foreach ( $templater->data[$parse_key]['__pages'] as $pageid )
+					$struct_keys[] = $parse_key . '_page_' . $pageid;
+			foreach ( array_intersect_key( $templater->data, array_flip($struct_keys) ) as $_struct )
+				$structs[$parse_key] = array_merge( $structs[$parse_key], $_struct );
+		}
+		$struct =& $structs[$parse_key];
+
 		if ( ! isset($data[$key]) && ! isset($struct[$key]) )
 			return;
 
