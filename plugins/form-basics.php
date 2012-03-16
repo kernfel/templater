@@ -195,7 +195,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 	function option( &$parser, $element ) {
 		if ( ! $this->in_select || ! isset($element['attrib']['value']) )
 			return;
-		$key = $element['attrib']['value'];
+		$key = htmlspecialchars_decode($element['attrib']['value']);
 		$parser->data[$this->parse_key][$this->in_select]['options'][$key] = $key;
 
 		$var = "{$this->inst_var}['$this->in_select']";
@@ -228,7 +228,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 		if ( ! $this->in_select || ! isset($element['attrib']['value']) )
 			return;
 		$label = isset( $element['attrib']['label'] ) ? $element['attrib']['label'] : trim($cdata);
-		$key = $element['attrib']['value'];
+		$key = htmlspecialchars_decode($element['attrib']['value']);
 		$parser->data[$this->parse_key][$this->in_select]['options'][$key] = $label;
 	}
 
