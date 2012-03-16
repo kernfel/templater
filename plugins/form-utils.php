@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b1';
+	public $version = '1b2';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -141,6 +141,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	 *                           Otherwise, include trumps exclude.
 	 * @attrib inline            If inside a <mail> element, output into the mail message body. By default, this is disabled.
 	 * @attrib filename          If inside a <mail> element, the name of the attachment to be generated. Defaults to 'file.csv'.
+	 *                           You can insert data values as "$fieldname$". Encode literal '$' as "$$".
 	 * @attrib charset           If set, converts output from input-charset to this.
 	 * @attrib input-charset     Character set for data and field names. Defaults to UTF-8.
 	 */
@@ -183,9 +184,10 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$base_output = "$class::get_csv( $this->inst_var, '$sep', $replace, $inc, $charset )";
 
-		if ( $this->in_mail && empty($element['attrib']['inline']) )
-			$this->attachments[ isset($element['attrib']['filename']) ? $element['attrib']['filename'] : 'file.csv' ] = $base_output;
-		elseif ( $this->in_mail )
+		if ( $this->in_mail && empty($element['attrib']['inline']) ) {
+			$filename = isset($element['attrib']['filename']) ? $this->parse_variable_string( $element['attrib']['filename'] ) : "file.csv";
+			$this->attachments[$filename] = $base_output;
+		} elseif ( $this->in_mail )
 			$this->mail_insert_code( $base_output );
 		elseif ( $this->escape_data )
 			$element['before_start_el'] = "<?php echo htmlspecialchars($base_output); ?>";
@@ -221,14 +223,45 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $csv;
 	}
 
+	protected function parse_variable_string( $str, $quote = "'", $escape_input = true ) {
+		if ( $escape_input )
+			$str = addcslashes( htmlspecialchars_decode( $str ), "'\\" );
+		$p = 0;
+		$in_var = false;
+		$rep = $pos = $len = array();
+		while ( false !== $p = strpos( $str, '$', $p+1 ) ) {
+			if ( $in_var ) {
+				$in_var = false;
+				if ( $p - $pprev == 1 ) {
+					$rep[] = '$';
+					$pos[] = $pprev;
+					$len[] = 2;
+				} else {
+					$varname = substr( $str, $pprev+1, $p-$pprev-1 );
+					$rep[] = "$quote.(isset({$this->inst_var}['$varname'])?{$this->inst_var}['$varname']:'').$quote";
+					$pos[] = $pprev;
+					$len[] = strlen($varname) + 2;
+				}
+			} else {
+				$in_var = true;
+				$pprev = $p;
+			}
+		}
+		$rep = array_reverse( $rep, true );
+		foreach ( $rep as $i => $r )
+			$str = substr_replace( $str, $r, $pos[$i], $len[$i] );
+
+		return $str;
+	}
+
 	/**
 	 * Send an email at runtime. The content nested within this element is interpreted as the message body and should consist
 	 * only of plain text as well as elements defined within this class, such as <output> and <csv>. Other nested elements, including HTML comments,
 	 * will not be processed correctly!
 	 *
 	 * @attrib to       string  The email recipient
-	 * @attrib from     string  The email sender
-	 * @attrib subject  string  The email subject
+	 * @attrib from     string  The email sender. You can insert data values as "$fieldname$". Encode literal '$' as "$$".
+	 * @attrib subject  string  The email subject. You can insert data values as "$fieldname$". Encode literal '$' as "$$".
 	 */
 	function mail_start_el( &$parser, $element ) {
 		$element['suppress_tags'] = true;
@@ -249,8 +282,8 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$args = array(
 			'to' => isset($element['attrib']['to']) ? addcslashes(htmlspecialchars_decode( $element['attrib']['to'] ),"'\\") : '',
-			'subject' => isset($element['attrib']['subject']) ? addcslashes(htmlspecialchars_decode( $element['attrib']['subject'] ),"'\\") : '',
-			'from' => isset($element['attrib']['from']) ? addcslashes(htmlspecialchars_decode( $element['attrib']['from'] ),"'\\") : ''
+			'subject' => isset($element['attrib']['subject']) ? $this->parse_variable_string( $element['attrib']['subject'] ) : '',
+			'from' => isset($element['attrib']['from']) ? $this->parse_variable_string( $element['attrib']['from'] ) : ''
 		);
 		foreach ( $args as $key => $arg ) {
 			$args[$key] = "'$key'=>'$arg'";
