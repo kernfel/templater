@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1a14';
+	public $version = '1b1';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -48,14 +48,14 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		if ( isset($element['attrib']['name']) ) {
 			$key = $element['attrib']['name'];
-			$escape = $this->escape_data ? 'true' : 'false';
+			$escape = ( $this->escape_data && ! $this->in_mail ) ? 'true' : 'false';
 
 			$sep = isset($element['attrib']['sep']) ? addcslashes(htmlspecialchars_decode($element['attrib']['sep']),"'\\") : ', ';
 			$before = isset($element['attrib']['before']) ? addcslashes(htmlspecialchars_decode($element['attrib']['before']),"'\\") : '';
 			$after = isset($element['attrib']['after']) ? addcslashes(htmlspecialchars_decode($element['attrib']['after']),"'\\") : '';
 
 			if ( isset($element['attrib']['type']) && 'plain' == $element['attrib']['type'] ) {
-				if ( $this->escape_data )
+				if ( $this->escape_data && ! $this->in_mail )
 					$base_output = "isset({$this->inst_var}['$key']) ? htmlspecialchars({$this->inst_var}['$key']) : ''";
 				else
 					$base_output = "isset({$this->inst_var}['$key']) ? {$this->inst_var}['$key'] : ''";
