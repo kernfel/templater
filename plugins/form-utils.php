@@ -117,9 +117,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 				$dp = array_map( 'htmlspecialchars', $dp );
 			return $before . implode( $sep, $dp ) . $after;
 		} elseif ( ! $dp_is_array && $struct_is_multi ) {
-			return $before . $struct[$key]['options'][$dp] . $after;
+			return $before . ( isset($struct[$key]['options'][$dp]) ? $struct[$key]['options'][$dp] : $dp ) . $after;
 		} elseif ( isset($struct[$key]) && ! empty($struct[$key]['options']) ) {
-			return $struct[$key]['options'][$dp];
+			return isset($struct[$key]['options'][$dp]) ? $struct[$key]['options'][$dp] : $dp;
 		} else {
 			return $escape ? htmlspecialchars($dp) : $dp;
 		}
