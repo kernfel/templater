@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b2';
+	public $version = '1b3';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -388,8 +388,14 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			 . htmlspecialchars_decode($element['attrib']['options']) . '};</script>';
 		}
 
-		$element['before_start_el'] = "<?php if ( empty({$this->inst_var}['__recaptcha']) ) : ?>";
-		$element['after_end_el'] = "<?php else : ?><input type='hidden' name='__recaptcha' value='1' /><?php endif; ?>";
+		$element['before_start_el'] = <<<PHP
+<?php if ( empty({$this->struct_var}['__recaptcha']['printed']) ) :
+ {$this->struct_var}['__recaptcha']['printed'] = true;
+ if ( empty({$this->inst_var}['__recaptcha']) ) : ?>
+PHP;
+		$element['after_end_el'] = <<<PHP
+<?php else : ?><input type='hidden' name='__recaptcha' value='1' /><?php endif; endif; ?>
+PHP;
 
 		return $element;
 	}
