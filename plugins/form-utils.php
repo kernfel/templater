@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1a13';
+	public $version = '1a14';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -141,6 +141,8 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	 *                           Otherwise, include trumps exclude.
 	 * @attrib inline            If inside a <mail> element, output into the mail message body. By default, this is disabled.
 	 * @attrib filename          If inside a <mail> element, the name of the attachment to be generated. Defaults to 'file.csv'.
+	 * @attrib charset           If set, converts output from input-charset to this.
+	 * @attrib input-charset     Character set for data and field names. Defaults to UTF-8.
 	 */
 	function csv( &$parser, $element ) {
 		$element['suppress_tags'] = true;
@@ -163,13 +165,23 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		if ( isset($element['attrib']['include']) )
 			$inc = "'" . $element['attrib']['include'] . "', true";
 		elseif ( isset($element['attrib']['exclude']) )
-			$inc = "'" . $element['attrib']['exclude'] . "'";
+			$inc = "'" . $element['attrib']['exclude'] . "', false";
 		else
-			$inc = "''";
+			$inc = "'', false";
+
+		if ( isset($element['attrib']['charset']) ) {
+			$charset = "'" . $element['attrib']['charset'] . "', ";
+			if ( isset($element['attrib']['input-charset']) )
+				$charset .= "'" . $element['attrib']['input-charset'] . "'";
+			else
+				$charset .= "'utf-8'";
+		} else {
+			$charset = "false,false";
+		}
 
 		$class = get_class();
 
-		$base_output = "$class::get_csv( $this->inst_var, '$sep', $replace, $inc )";
+		$base_output = "$class::get_csv( $this->inst_var, '$sep', $replace, $inc, $charset )";
 
 		if ( $this->in_mail && empty($element['attrib']['inline']) )
 			$this->attachments[ isset($element['attrib']['filename']) ? $element['attrib']['filename'] : 'file.csv' ] = $base_output;
@@ -183,7 +195,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $element;
 	}
 
-	static public function get_csv( &$data, $sep, $replace, $indices, $include = false ) {
+	static public function get_csv( &$data, $sep, $replace, $indices, $include, $charset, $input_charset ) {
 		$indices = explode( ',', $indices );
 		if ( ! $include )
 			$indices = array_diff( array_keys($data), $indices );
@@ -202,6 +214,10 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			}
 		}
 		$csv .= '"' . implode( '","', $out ) . '"';
+
+		if ( $charset )
+			$csv = iconv( $input_charset, $charset, $csv );
+
 		return $csv;
 	}
 
