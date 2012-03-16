@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b3';
+	public $version = '1b4';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -144,6 +144,10 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	 *                           You can insert data values as "$fieldname$". Encode literal '$' as "$$".
 	 * @attrib charset           If set, converts output from input-charset to this.
 	 * @attrib input-charset     Character set for data and field names. Defaults to UTF-8.
+	 * @attrib add-data          Add arbitrary data, separated by add-data-sep.
+	 *                           In values, you can insert data values as "$fieldname$". Encode literal '$' as "$$".
+	 * @attrib add-data-sep      Separator characters for add-data, used in like kind to replaceseps. Defaults to ',='.
+	 *                           Note that the '$' character is not available as a separator.
 	 */
 	function csv( &$parser, $element ) {
 		$element['suppress_tags'] = true;
@@ -152,11 +156,12 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		$sep = isset($element['attrib']['multiseparator']) ? addcslashes(htmlspecialchars_decode($element['attrib']['multiseparator']),"'\\") : ',';
 
 		if ( isset($element['attrib']['replace']) ) {
-			$r = isset($element['attrib']['replaceseps']) ? addcslashes(htmlspecialchars_decode($element['attrib']['replaceseps']),"'\\") : '$=';
+			$r = isset($element['attrib']['replaceseps']) ? htmlspecialchars_decode($element['attrib']['replaceseps']) : '$=';
 			$replace_arr = array();
 			foreach ( explode( $r[0], addcslashes(htmlspecialchars_decode($element['attrib']['replace']),"'\\") ) as $snr ) {
 				$snr = explode( $r[1], $snr );
-				$replace_arr[] = "'" . $snr[0] . "'=>'" . ( isset($snr[1]) ? $snr[1] : '' ) . "'";
+				$replace_arr[] = "'" . addcslashes(htmlspecialchars_decode($snr[0]),"'\\") . "'=>'"
+				 . ( isset($snr[1]) ? addcslashes(htmlspecialchars_decode($snr[1]),"'\\") : '' ) . "'";
 			}
 			$replace = 'array(' . implode( ',', $replace_arr ) . ')';
 		} else {
@@ -180,9 +185,22 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			$charset = "false,false";
 		}
 
+		if ( isset($element['attrib']['add-data']) ) {
+			$r = isset($element['attrib']['replaceseps']) ? htmlspecialchars_decode($element['attrib']['replaceseps']) : ',=';
+			$add_arr = array();
+			foreach ( $explode( $r[0], $element['attrib']['add-data'] ) as $add ) {
+				$add = explode( $r[1], $add );
+				$add_arr[] = "'" . addcslashes(htmlspecialchars_decode($add[0]),"'\\") . "'=>'"
+				 . ( isset($add[1]) ? $this->parse_variable_string($add[1]) : '' ) . "'";
+			}
+			$add_data = 'array(' . implode( ',', $add_arr ) . ')';
+		} else {
+			$add_data = 'array()';
+		}
+
 		$class = get_class();
 
-		$base_output = "$class::get_csv( $this->inst_var, '$sep', $replace, $inc, $charset )";
+		$base_output = "$class::get_csv( $this->inst_var, '$sep', $replace, $inc, $charset, $add_data )";
 
 		if ( $this->in_mail && empty($element['attrib']['inline']) ) {
 			$filename = isset($element['attrib']['filename']) ? $this->parse_variable_string( $element['attrib']['filename'] ) : "file.csv";
@@ -197,11 +215,16 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $element;
 	}
 
-	static public function get_csv( &$data, $sep, $replace, $indices, $include, $charset, $input_charset ) {
+	static public function get_csv( &$data, $sep, $replace, $indices, $include, $charset, $input_charset, $add_data ) {
 		$indices = explode( ',', $indices );
 		if ( ! $include )
 			$indices = array_diff( array_keys($data), $indices );
-		$csv = '"' . implode( '","', $indices ) . '"' . PHP_EOL;
+
+		$csv = '"' . implode( '","', $indices ) . '"';
+		if ( $add_data )
+			$csv .= ',"' . implode( '","', array_keys($add_data) ) . '"';
+		$csv .= "\r\n";
+
 		$out = array();
 		foreach ( $indices as $index ) {
 			if ( ! isset($data[$index]) ) {
@@ -215,7 +238,10 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 				$out[] = str_replace( array_keys($replace), $replace, $data[$index] );
 			}
 		}
+
 		$csv .= '"' . implode( '","', $out ) . '"';
+		if ( $add_data )
+			$csv .= ',"' . implode( '","', $add_data ) . '"';
 
 		if ( $charset )
 			$csv = iconv( $input_charset, $charset, $csv );
