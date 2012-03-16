@@ -7,13 +7,14 @@ register_plugin( 'form-basics', 'FBK_Form_Basics' );
  */
 class FBK_Form_Basics extends FBK_Handler_Plugin {
 
-	public $version = '1';
+	public $version = '1.1';
 
 	protected $default_inst_key = false;
 	protected $default_parse_key = 'form';
 
 	protected $in_form = false;
 	protected $in_select = false;
+	protected $in_textarea = false;
 
 	function get_handlers() {
 		return array(
@@ -24,7 +25,9 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 			array( 'end_el', 'select', 'select' ),
 			array( 'start_el', 'option', 'option' ),
 			array( 'cdata', 'option', 'option_label' ),
-			array( 'cdata', 'textarea', 'textarea' )
+			array( 'start_el', 'textarea', 'textarea' ),
+			array( 'end_el', 'textarea', 'textarea' ),
+			array( 'cdata', 'textarea', 'textarea_cdata' )
 		);
 	}
 
@@ -229,23 +232,45 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 		$parser->data[$this->parse_key][$this->in_select]['options'][$key] = $label;
 	}
 
-	function textarea( &$parser, $element, $cdata ) {
-		if ( ! $this->in_form || ! $element['attrib']['name'] || isset($element['attrib']['disabled']) )
+	function textarea( &$parser, $element, $where ) {
+		if ( ! $this->in_form || empty($element['attrib']['name']) || isset($element['attrib']['disabled']) )
 			return;
-		$parser->data[$this->parse_key][ $element['attrib']['name'] ] = array(
+
+		$name = $element['attrib']['name'];
+
+		if ( 'end_el' == $where ) {
+			if ( $parser->data[$this->parse_key][$name]['default'] )
+				$default = htmlspecialchars( $parser->data[$this->parse_key][$name]['default'], ENT_QUOTES );
+			else
+				$default = '';
+
+			$var = "{$this->inst_var}['$this->in_textarea']";
+			if ( $this->escape_data )
+				$element['before_end_el'] = "<?php echo isset($var) ? htmlspecialchars($var) : '$default'; ?>";
+			else
+				$element['before_end_el'] = "<?php echo isset($var) ? $var : '$default'; ?>";
+
+			$this->in_textarea = false;
+			return $element;
+		} else {
+			$this->in_textarea = $name;
+		}
+
+		$parser->data[$this->parse_key][$name] = array(
 			'type' => 'textarea',
-			'default' => $cdata,
+			'default' => '',
 			'required' => isset($element['attrib']['required'])
 		);
 		if ( isset($element['attrib']['maxlength']) )
-			$parser->data[$this->parse_key][ $element['attrib']['name'] ]['maxlength'] = (int) $element['attrib']['maxlength'];
+			$parser->data[$this->parse_key][$name]['maxlength'] = (int) $element['attrib']['maxlength'];
+	}
 
-		$cdata_escaped = htmlspecialchars( $cdata, ENT_QUOTES );
-		$var = "{$this->inst_var}['" . $element['attrib']['name'] . "']";
-		if ( $this->escape_data )
-			return "<?php echo isset($var) ? htmlspecialchars($var) : '$cdata_escaped'; ?>";
-		else
-			return "<?php echo isset($var) ? $var : '$cdata_escaped'; ?>";
+	function textarea_cdata( &$parser, $element, $cdata ) {
+		if ( ! $this->in_textarea )
+			return;
+
+		$parser->data[$this->parse_key][$name]['default'] = htmlspecialchars_decode( $cdata, ENT_QUOTES );
+		return '';
 	}
 }
 ?>
