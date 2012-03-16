@@ -30,39 +30,47 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	}
 
 	/**
-	 * Output data from the specified form input. The <output> element and all nested content will be replaced by the designated value.
-	 * The following attributes are respected:
-	 * name (required): Which data point to output.
-	 * type (optional): 'plain' | 'translated', how to output the data. If set to 'translated', will check the structure variable for any available
+	 * Output processed data. The <output> element and all nested content will be replaced by the designated value.
+	 * The following sets of attributes are supported:
+	 *
+	 * name: Specifies a form field to output.
+	 *  - type (optional): 'plain' | 'translated', how to output the data. If set to 'translated', will check the structure variable for any available
 	 *	translations, such as select labels etc. Defaults to 'translated'.
-	 * sep (optional): string to be used as a separator if the data point is an array. Defaults to ', '.
-	 * before (optional): string to be inserted before the output if the data point is an array. Defaults to ''.
-	 * after (optional): As above, but after the output.
+	 *  - sep (optional): string to be used as a separator if the data point is an array. Defaults to ', '.
+	 *  - before (optional): string to be inserted before the output if the data point is an array. Defaults to ''.
+	 *  - after (optional): As above, but after the output.
+	 *
+	 * date (required): Output current date, formatted according to the attribute value (see php.net/date). Defaults to 'd.m.Y' if left empty.
 	 */
 	function output( &$parser, $element ) {
 		$element['suppress_tags'] = true;
 		$element['suppress_nested'] = true;
 
-		$key = $element['attrib']['name'];
-		$escape = $this->escape_data ? 'true' : 'false';
+		if ( isset($element['attrib']['name']) ) {
+			$key = $element['attrib']['name'];
+			$escape = $this->escape_data ? 'true' : 'false';
 
-		$sep = isset($element['attrib']['sep']) ? addcslashes(htmlspecialchars_decode($element['attrib']['sep']),"'\\") : ', ';
-		$before = isset($element['attrib']['before']) ? addcslashes(htmlspecialchars_decode($element['attrib']['before']),"'\\") : '';
-		$after = isset($element['attrib']['after']) ? addcslashes(htmlspecialchars_decode($element['attrib']['after']),"'\\") : '';
+			$sep = isset($element['attrib']['sep']) ? addcslashes(htmlspecialchars_decode($element['attrib']['sep']),"'\\") : ', ';
+			$before = isset($element['attrib']['before']) ? addcslashes(htmlspecialchars_decode($element['attrib']['before']),"'\\") : '';
+			$after = isset($element['attrib']['after']) ? addcslashes(htmlspecialchars_decode($element['attrib']['after']),"'\\") : '';
 
-		if ( isset($element['attrib']['type']) && 'plain' == $element['attrib']['type'] ) {
-			if ( $this->escape_data )
-				$base_output = "isset({$this->inst_var}['$key']) ? htmlspecialchars({$this->inst_var}['$key']) : ''";
-			else
-				$base_output = "isset({$this->inst_var}['$key']) ? {$this->inst_var}['$key'] : ''";
-		} else {
-			$class = get_class();
-			if ( $this->on_page ) {
-				$parse_key = $this->parse_key_backup;
+			if ( isset($element['attrib']['type']) && 'plain' == $element['attrib']['type'] ) {
+				if ( $this->escape_data )
+					$base_output = "isset({$this->inst_var}['$key']) ? htmlspecialchars({$this->inst_var}['$key']) : ''";
+				else
+					$base_output = "isset({$this->inst_var}['$key']) ? {$this->inst_var}['$key'] : ''";
 			} else {
-				$parse_key = $this->parse_key;
+				$class = get_class();
+				if ( $this->on_page ) {
+					$parse_key = $this->parse_key_backup;
+				} else {
+					$parse_key = $this->parse_key;
+				}
+				$base_output = "$class::translate( '$key', $this->inst_var, \$templater, '$parse_key', '$sep', '$before', '$after', $escape )";
 			}
-			$base_output = "$class::translate( '$key', $this->inst_var, \$templater, '$parse_key', '$sep', '$before', '$after', $escape )";
+		} elseif ( isset($element['attrib']['date']) ) {
+			$format = $element['attrib']['date'] ? addcslashes(htmlspecialchars_decode($element['attrib']['date']),"'\\") : 'd.m.Y';
+			$base_output = "date('$format')";
 		}
 
 		if ( $this->in_mail )
