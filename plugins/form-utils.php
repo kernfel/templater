@@ -188,7 +188,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		if ( isset($element['attrib']['add-data']) ) {
 			$r = isset($element['attrib']['replaceseps']) ? htmlspecialchars_decode($element['attrib']['replaceseps']) : ',=';
 			$add_arr = array();
-			foreach ( $explode( $r[0], $element['attrib']['add-data'] ) as $add ) {
+			foreach ( explode( $r[0], $element['attrib']['add-data'] ) as $add ) {
 				$add = explode( $r[1], $add );
 				$add_arr[] = "'" . addcslashes(htmlspecialchars_decode($add[0]),"'\\") . "'=>'"
 				 . ( isset($add[1]) ? $this->parse_variable_string($add[1]) : '' ) . "'";
