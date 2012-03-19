@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b9';
+	public $version = '1b10';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -240,7 +240,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$indices_out = array();
 		foreach ( $indices as $i )
-			$indices_out = isset($data[$i]['name_orig']) ? $data[$i]['name_orig'] : $i;
+			$indices_out[] = isset($data[$i]['name_orig']) ? $data[$i]['name_orig'] : $i;
 
 		$csv = '"' . implode( '","', $indices_out ) . '"';
 		if ( $add_data )
