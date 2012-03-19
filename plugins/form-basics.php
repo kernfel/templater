@@ -288,7 +288,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 	}
 
 	function sanitize_name( $string ) {
-		return preg_replace( '/[ ,\x80-\x9F]/', '_', $string );
+		return preg_replace( '/[ ,.$=\'"\x80-\x9F]/', '_', $string );
 	}
 }
 ?>
