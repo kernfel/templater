@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b8';
+	public $version = '1b9';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -176,7 +176,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			$replace_arr = array();
 			foreach ( explode( $r[0], htmlspecialchars_decode($element['attrib']['special-replace']) ) as $snr ) {
 				$snr = explode( $r[2], $snr );
-				$fieldname = $snr[0];
+				$fieldname = $this->sanitize_name( $snr[0] );
 				$snr = explode( $r[1], $snr[1] );
 				$replace_arr[] = "'". addcslashes($fieldname,"'\\") . "'=>array('" . addcslashes($snr[0],"'\\") . "'=>'"
 				 . ( isset($snr[1]) ? addcslashes($snr[1],"'\\") : '' ) . "')";
