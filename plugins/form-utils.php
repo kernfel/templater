@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b7';
+	public $version = '1b8';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -181,7 +181,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 				$replace_arr[] = "'". addcslashes($fieldname,"'\\") . "'=>array('" . addcslashes($snr[0],"'\\") . "'=>'"
 				 . ( isset($snr[1]) ? addcslashes($snr[1],"'\\") : '' ) . "')";
 			}
-			$special_replace = 'array(' . implode( ',', $replace_arra ) . ')';
+			$special_replace = 'array(' . implode( ',', $replace_arr ) . ')';
 		} else {
 			$special_replace = 'array()';
 		}
