@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b4';
+	public $version = '1b5';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -148,6 +148,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	 *                           In values, you can insert data values as "$fieldname$". Encode literal '$' as "$$".
 	 * @attrib add-data-sep      Separator characters for add-data, used in like kind to replaceseps. Defaults to ',='.
 	 *                           Note that the '$' character is not available as a separator.
+	 * @attrib special-replace   Like replace, only for specific fields. Formatted as 'fieldname:search=replace$...'. Separators :, = and $
+	 *                           are customisable, see below.
+	 * @attrib special-replace-sep  Separators for special replace. Defaults to '$=:'.
 	 */
 	function csv( &$parser, $element ) {
 		$element['suppress_tags'] = true;
@@ -158,14 +161,29 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		if ( isset($element['attrib']['replace']) ) {
 			$r = isset($element['attrib']['replaceseps']) ? htmlspecialchars_decode($element['attrib']['replaceseps']) : '$=';
 			$replace_arr = array();
-			foreach ( explode( $r[0], addcslashes(htmlspecialchars_decode($element['attrib']['replace']),"'\\") ) as $snr ) {
+			foreach ( explode( $r[0], htmlspecialchars_decode($element['attrib']['replace']) ) as $snr ) {
 				$snr = explode( $r[1], $snr );
-				$replace_arr[] = "'" . addcslashes(htmlspecialchars_decode($snr[0]),"'\\") . "'=>'"
-				 . ( isset($snr[1]) ? addcslashes(htmlspecialchars_decode($snr[1]),"'\\") : '' ) . "'";
+				$replace_arr[] = "'" . addcslashes($snr[0],"'\\") . "'=>'"
+				 . ( isset($snr[1]) ? addcslashes($snr[1],"'\\") : '' ) . "'";
 			}
 			$replace = 'array(' . implode( ',', $replace_arr ) . ')';
 		} else {
 			$replace = 'array(\'"\'=>\'""\')';
+		}
+
+		if ( isset($element['attrib']['special-replace']) ) {
+			$r = isset($element['attrib']['special-replace-sep']) ? htmlspecialchars_decode($element['attrib']['special-replace-sep']) : '$=:';
+			$replace_arr = array();
+			foreach ( explode( $r[0], htmlspecialchars_decode($element['attrib']['special-replace']) ) as $snr ) {
+				$snr = explode( $r[2], $snr );
+				$fieldname = $snr[0];
+				$snr = explode( $r[1], $snr[1] );
+				$replace_arr[] = "'". addcslashes($fieldname,"'\\") . "'=>array('" . addcslashes($snr[0],"'\\") . "'=>'"
+				 . ( isset($snr[1]) ? addcslashes($snr[1],"'\\") : '' ) . "')";
+			}
+			$special_replace = 'array(' . implode( ',', $replace_arra ) . ')';
+		} else {
+			$special_replace = 'array()';
 		}
 
 		if ( isset($element['attrib']['include']) )
@@ -200,7 +218,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$class = get_class();
 
-		$base_output = "$class::get_csv( $this->inst_var, '$sep', $replace, $inc, $charset, $add_data )";
+		$base_output = "$class::get_csv( $this->inst_var, '$sep', $replace, $special_replace, $inc, $charset, $add_data )";
 
 		if ( $this->in_mail && empty($element['attrib']['inline']) ) {
 			$filename = isset($element['attrib']['filename']) ? $this->parse_variable_string( $element['attrib']['filename'] ) : "file.csv";
@@ -215,7 +233,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $element;
 	}
 
-	static public function get_csv( &$data, $sep, $replace, $indices, $include, $charset, $input_charset, $add_data ) {
+	static public function get_csv( &$data, $sep, $common_replace, $special_replace, $indices, $include, $charset, $input_charset, $add_data ) {
 		$indices = explode( ',', $indices );
 		if ( ! $include )
 			$indices = array_diff( array_keys($data), $indices );
@@ -229,13 +247,19 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		foreach ( $indices as $index ) {
 			if ( ! isset($data[$index]) ) {
 				$out[] = '';
-			} elseif ( is_array($data[$index]) ) {
-				$d = array();
-				foreach ( $data[$index] as $i )
-					$d[] = str_replace( array_keys($replace), $replace, $i );
-				$out[] = implode( $sep, $d );
 			} else {
-				$out[] = str_replace( array_keys($replace), $replace, $data[$index] );
+				if ( isset($special_replace[$index]) )
+					$replace = array_merge( $common_replace, $special_replace[$index] );
+				else
+					$replace = $common_replace;
+				if ( is_array($data[$index]) ) {
+					$d = array();
+					foreach ( $data[$index] as $i )
+						$d[] = str_replace( array_keys($replace), $replace, $i );
+					$out[] = implode( $sep, $d );
+				} else {
+					$out[] = str_replace( array_keys($replace), $replace, $data[$index] );
+				}
 			}
 		}
 
