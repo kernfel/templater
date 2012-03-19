@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b11';
+	public $version = '1b12';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -216,9 +216,14 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			$add_data = 'array()';
 		}
 
+		if ( $this->on_page )
+			$parse_key = $this->parse_key_backup;
+		else
+			$parse_key = $this->parse_key;
+
 		$class = get_class();
 
-		$base_output = "$class::get_csv( $this->inst_var, '$sep', $replace, $special_replace, $inc, $charset, $add_data )";
+		$base_output = "$class::get_csv( $this->inst_var, \$templater, '$parse_key', '$sep', $replace, $special_replace, $inc, $charset, $add_data )";
 
 		if ( $this->in_mail && empty($element['attrib']['inline']) ) {
 			$filename = isset($element['attrib']['filename']) ? $this->parse_variable_string( $element['attrib']['filename'] ) : "file.csv";
@@ -233,14 +238,19 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $element;
 	}
 
-	static public function get_csv( &$data, $sep, $common_replace, $special_replace, $indices, $include, $charset, $input_charset, $add_data ) {
+	static public function get_csv( &$data, &$templater, $parse_key, $sep, $common_replace, $special_replace, $indices, $include, $charset, $input_charset, $add_data ) {
 		$indices = explode( ',', $indices );
 		if ( ! $include )
 			$indices = array_diff( array_keys($data), $indices );
 
+		$struct_keys = array($parse_key);
+		if ( isset($templater->data[$parse_key]['__pages']) )
+			foreach ( $templater->data[$parse_key]['__pages'] as $p )
+				$struct_keys[] = $parse_key . '_page_' . $p;
+		$struct = call_user_func_array( 'array_merge', array_intersect_key( $templater->data, array_flip($struct_keys) ) );
 		$indices_out = array();
 		foreach ( $indices as $i )
-			$indices_out[] = isset($data[$i]['name_orig']) ? $data[$i]['name_orig'] : $i;
+			$indices_out[] = isset($struct[$i]['name_orig']) ? $struct[$i]['name_orig'] : $i;
 
 		$csv = '"' . implode( '","', $indices_out ) . '"';
 		if ( $add_data )
