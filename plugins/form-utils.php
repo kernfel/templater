@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b6';
+	public $version = '1b7';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -47,7 +47,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		$element['suppress_nested'] = true;
 
 		if ( isset($element['attrib']['name']) ) {
-			$key = $element['attrib']['name'];
+			$key = $this->sanitize_name( $element['attrib']['name'] );
 			$escape = ( $this->escape_data && ! $this->in_mail ) ? 'true' : 'false';
 
 			$sep = isset($element['attrib']['sep']) ? addcslashes(htmlspecialchars_decode($element['attrib']['sep']),"'\\") : ', ';
@@ -138,7 +138,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	 * @attrib include           Which entries from the data array to include. Separate terms with a comma.
 	 * @attrib exclude           Which entries from the data array to exclude. Separate terms with a comma.
 	 *                           If neither include nor exclude are given, the full data array is included.
-	 *                           Otherwise, include trumps exclude.
+	 *                           Otherwise, exclude trumps include.
 	 * @attrib inline            If inside a <mail> element, output into the mail message body. By default, this is disabled.
 	 * @attrib filename          If inside a <mail> element, the name of the attachment to be generated. Defaults to 'file.csv'.
 	 *                           You can insert data values as "$fieldname$". Encode literal '$' as "$$".
@@ -187,9 +187,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 
 		if ( isset($element['attrib']['include']) )
-			$inc = "'" . $element['attrib']['include'] . "', true";
+			$inc = "'" . implode( ',', array_map( array(&$this, 'sanitize_name'), explode( ',', $element['attrib']['include'] ) ) ) . "', true";
 		elseif ( isset($element['attrib']['exclude']) )
-			$inc = "'" . $element['attrib']['exclude'] . "', false";
+			$inc = "'" . implode( ',', array_map( array(&$this, 'sanitize_name'), explode( ',', $element['attrib']['exclude'] ) ) ) . "', false";
 		else
 			$inc = "'', false";
 
@@ -238,7 +238,11 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		if ( ! $include )
 			$indices = array_diff( array_keys($data), $indices );
 
-		$csv = '"' . implode( '","', $indices ) . '"';
+		$indices_out = array();
+		foreach ( $indices as $i )
+			$indices_out = isset($data[$i]['name_orig']) ? $data[$i]['name_orig'] : $i;
+
+		$csv = '"' . implode( '","', $indices_out ) . '"';
 		if ( $add_data )
 			$csv .= ',"' . implode( '","', array_keys($add_data) ) . '"';
 		$csv .= "\r\n";

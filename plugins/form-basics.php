@@ -7,7 +7,7 @@ register_plugin( 'form-basics', 'FBK_Form_Basics' );
  */
 class FBK_Form_Basics extends FBK_Handler_Plugin {
 
-	public $version = '1.1';
+	public $version = '1.2';
 
 	protected $default_inst_key = false;
 	protected $default_parse_key = 'form';
@@ -48,11 +48,14 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 		if ( ! $this->in_form || isset($element['attrib']['disabled']) || empty($element['attrib']['name']) )
 			return;
 
+		$name_original = $element['attrib']['name'];
+		$name = $this->sanitize_name( $name_original );
+
 		$data = array(
 			'type' => isset($element['attrib']['type']) ? $element['attrib']['type'] : 'text',
-			'required' => isset($element['attrib']['required'])
+			'required' => isset($element['attrib']['required']),
+			'name_orig' => $name_original
 		);
-		$name = $element['attrib']['name'];
 		switch ( $data['type'] ) {
 			case 'text':
 			case 'search':
@@ -173,6 +176,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 		if ( $data )
 			$parser->data[$this->parse_key][$name] = $data;
 
+		$element['attrib']['name'] = $name;
 		return $element;
 	}
 
@@ -180,13 +184,18 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 		if ( ! $this->in_form || empty($element['attrib']['name']) || isset($element['attrib']['disabled']) )
 			return;
 		if ( 'start_el' == $where ) {
-			$this->in_select = $element['attrib']['name'];
-			$parser->data[$this->parse_key][ $element['attrib']['name'] ] = array(
+			$name_original = $element['attrib']['name'];
+			$name = $this->sanitize_name( $name_original );
+			$this->in_select = $name;
+			$parser->data[$this->parse_key][$name] = array(
 				'type' => 'select',
 				'default' => isset($element['attrib']['multiple']) ? array() : false,
 				'multiple' => isset($element['attrib']['multiple']),
-				'options' => array()
+				'options' => array(),
+				'name_orig' => $name_original
 			);
+			$element['attrib']['name'] = $name;
+			return $element;
 		} else {
 			$this->in_select = false;
 		}
@@ -236,7 +245,8 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 		if ( ! $this->in_form || empty($element['attrib']['name']) || isset($element['attrib']['disabled']) )
 			return;
 
-		$name = $element['attrib']['name'];
+		$name_original = $element['attrib']['name'];
+		$name = $this->sanitize_name( $name_original );
 
 		if ( 'end_el' == $where ) {
 			if ( $parser->data[$this->parse_key][$name]['default'] )
@@ -259,10 +269,14 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 		$parser->data[$this->parse_key][$name] = array(
 			'type' => 'textarea',
 			'default' => '',
-			'required' => isset($element['attrib']['required'])
+			'required' => isset($element['attrib']['required']),
+			'name_orig' => $name_original
 		);
 		if ( isset($element['attrib']['maxlength']) )
 			$parser->data[$this->parse_key][$name]['maxlength'] = (int) $element['attrib']['maxlength'];
+
+		$element['attrib']['name'] = $name;
+		return $element;
 	}
 
 	function textarea_cdata( &$parser, $element, $cdata ) {
@@ -271,6 +285,10 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 
 		$parser->data[$this->parse_key][$name]['default'] = htmlspecialchars_decode( $cdata, ENT_QUOTES );
 		return '';
+	}
+
+	function sanitize_name( $string ) {
+		return preg_replace( '/[ ,\x80-\x9F]/', '_', $string );
 	}
 }
 ?>
