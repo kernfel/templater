@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b10';
+	public $version = '1b11';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -830,8 +830,7 @@ JS;
 
 		foreach ( $struct['__topage_triggers'] as $trigger => $value ) {
 			if ( isset( $data[$trigger] ) ) {
-				if ( ! $value )
-					$value = $data[$trigger];
+				$value = $data[$trigger] ? $data[$trigger] : $value;
 				if ( preg_match( '/^([+-])(\d+)$/', $value, $matches ) ) {
 					$i = array_search( $data['__frompage'], $pages );
 					if ( '+' == $matches[1] )
@@ -856,6 +855,9 @@ JS;
 				// Don't produce non-validation when going backwards
 				if ( array_search( $page, $pages ) < array_search( $data['__frompage'], $pages ) && $invalid )
 					$invalid = array();
+				// But do prevent going forward if validation failed. Note that skipped pages aren't validated, however!
+				elseif ( $invalid )
+					return;
 
 				$data['__page'] = $page;
 				$paging_done = true;
