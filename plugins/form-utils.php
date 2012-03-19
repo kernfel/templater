@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b5';
+	public $version = '1b6';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -600,7 +600,7 @@ PHP;
 				@$element['before_end_el'] .= '<input type="hidden" name="<?php echo session_name(); ?>" value="<?php echo session_id(); ?>" />';
 			}
 
-			$parser->add_header( "<?php $class::session_write( $this->inst_var ); ?>", 10 );
+			$parser->add_header( "<?php $class::session_write( $this->inst_var, \$templater, '$this->parse_key' ); ?>", 10 );
 		}
 
 		if ( ! isset($parser->data[$this->parse_key]['__nocarry']) )
@@ -643,8 +643,9 @@ PHP;
 				$data[$key] = $value;
 	}
 
-	static public function session_write( &$data ) {
-		foreach ( array_diff_key( $data, array_flip($templater->data[$parse_key]['__nocarry']) ) as $key => $value )
+	static public function session_write( &$data, &$templater, $parse_key ) {
+		$docarry = isset($templater->data[$parse_key]['__nocarry']) ? array_diff_key( $data, array_flip($templater->data[$parse_key]['__nocarry']) ) : $data;
+		foreach ( $docarry as $key => $value )
 			$_SESSION[$key] = $value;
 	}
 
