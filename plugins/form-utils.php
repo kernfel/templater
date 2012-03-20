@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b12';
+	public $version = '1b13';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -719,6 +719,8 @@ PHP;
 	function page_order( &$parser, $element, $value ) {
 		if ( 'form' == strtolower($element['name']) )
 			$this->pages = array_map( 'trim', explode( ',', $value ) );
+		$element['remove_attrib'] = 'pageorder';
+		return $element;
 	}
 
 	function form( &$parser, $element, $where ) {
@@ -759,7 +761,7 @@ PHP;
 		 && ! ( 'input' == strtolower($element['name']) && isset($element['attrib']['type']) && 'reset' == strtolower($element['attrib']['type']) )
 		) {
 			if ( isset($element['attrib']['name']) ) {
-				$name = $element['attrib']['name'];
+				$name = $this->sanitize_name( $element['attrib']['name'] );
 			} else {
 				$name = '__topage_f' . $unnamed_index++;
 				$element['add_attrib'] = array( 'name' => $name );
@@ -789,6 +791,8 @@ PHP;
 					break;
 				}
 			}
+
+			$value = '';
 		}
 
 		$parser->data[ $this->on_page ? $this->parse_key_backup : $this->parse_key ]['__nocarry'][] = $name;
@@ -840,7 +844,8 @@ JS;
 
 		foreach ( $struct['__topage_triggers'] as $trigger => $value ) {
 			if ( isset( $data[$trigger] ) ) {
-				$value = $data[$trigger] ? $data[$trigger] : $value;
+				if ( ! $value )
+					$value = $data[$trigger];
 				if ( preg_match( '/^([+-])(\d+)$/', $value, $matches ) ) {
 					$i = array_search( $data['__frompage'], $pages );
 					if ( '+' == $matches[1] )
