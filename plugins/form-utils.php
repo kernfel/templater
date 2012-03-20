@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b14';
+	public $version = '1b15';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -27,7 +27,8 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			array( 'attribute', 'pageorder', 'page_order' ),
 			array( 'attribute', 'topage', 'topage' ),
 			array( 'attribute', 'spinoff', 'spinoff_attribute' ),
-			array( 'start_el', 'spinoff', 'spinoff_element' )
+			array( 'start_el', 'spinoff', 'spinoff_element' ),
+			array( 'attribute', 'temporal', 'temporal' )
 		));
 	}
 
@@ -1055,6 +1056,67 @@ HTML;
 </html>
 HTML;
 		return $str;
+	}
+
+	/**
+	* Attribute "temporal" on <select> elements
+	*
+	* Adds a set of dynamic, date-dependent options to a select element.
+	* The attribute value contains a number of parameters given in the structure "param_key:param_value;param_key2:param_value2;..."
+	* The following parameters are supported:
+	* @param value   The date format string for the option value
+	* @param label   The date format string for the option label
+	* @param from    A relative integer marking the first of the added options.
+	*                0 essentially means "today", while other values (positive or negative) are calculated according to the "step" parameter.
+	* @param to      A relative integer marking the last of the added options.
+	* @param step    The iterating unit. Can be any of the units supported by relative date/time formats,
+	*                see http://php.net/manual/en/datetime.formats.relative.php
+	* @param prepend If set, options will be prepended to the select. By default, they will be appended instead.
+	*/
+	function temporal( &$parser, $element, $value ) {
+		$element['remove_attrib'] = 'temporal';
+
+		if ( ! 'select' == strtolower($element['name']) || ! $this->in_select )
+			return $element;
+
+		$options = explode( ';', $value );
+		$params = array();
+		foreach ( $options as $opt ) {
+			$opt = explode( ':', $opt );
+			$params[$opt[0]] = isset($opt[1]) ? $opt[1] : true;
+		}
+		$required_params = array( 'value', 'label', 'from', 'to', 'step' );
+		if ( array_diff_key( array_flip($required_params), $params ) ) {
+			trigger_error( "Missing argument(s) for temporal select '$element[form_key]'", E_USER_WARNING );
+			return $element;
+		}
+
+		$class = get_class();
+
+		$parser->add_header( "<?php $class::temporal_init( {$this->struct_var}['$element[form_key]'], '$params[value]', '$params[label]', $params[from], $params[to], '$params[step]' ); ?>" );
+
+		$element[ empty($params['prepend']) ? 'before_end_el' : 'after_start_el' ] = "<?php $class::temporal_printopts( {$this->struct_var}['$element[form_key]'] ); ?>";
+
+		return $element;
+	}
+
+	static public function temporal_init( &$struct, $value, $label, $from, $to, $step ) {
+		$struct['options_orig'] = $struct['options'];
+		$d = new DateTime();
+		if ( 'month' == $step )
+			$d->modify( ( 15 - $d->format('j') ) . ' days' );
+		if ( $from )
+			$d->modify( $from . ' ' . $step );
+		$incr = $from < $to;
+		for ( $i = $from; $incr ? $i <= $to : $i >= $to; $incr ? $i++ : $i-- ) {
+			$struct['options'][ $d->format($value) ] = $d->format($label);
+			$d->modify( ( $incr ? '1' : '-1' ) . ' ' . $step );
+		}
+	}
+
+	static public function temporal_printopts( &$struct ) {
+		foreach ( array_diff_key( $struct['options'], $struct['options_orig'] ) as $key => $label )
+			echo "<option value=\"$key\">$label</option>";
 	}
 }
 ?>
