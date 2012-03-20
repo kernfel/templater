@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b13';
+	public $version = '1b14';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
@@ -648,7 +648,10 @@ PHP;
 			ini_set( 'session.use_trans_sid', false );
 			if ( $sessname )
 				session_name( $sessname );
-			session_start();
+			if ( headers_sent() ) // Prevent warning about sent headers; they most likely originate from a reparse.
+				@session_start();
+			else
+				session_start();
 			$session_started = true;
 		}
 
