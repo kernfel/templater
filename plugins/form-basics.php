@@ -177,6 +177,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 			$parser->data[$this->parse_key][$name] = $data;
 
 		$element['attrib']['name'] = $name;
+		$element['form_key'] = isset($name_deref) ? $name_deref : $name;
 		return $element;
 	}
 
@@ -195,6 +196,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 				'name_orig' => $name_original
 			);
 			$element['attrib']['name'] = $name;
+			$element['form_key'] = $name;
 			return $element;
 		} else {
 			$this->in_select = false;
@@ -276,6 +278,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 			$parser->data[$this->parse_key][$name]['maxlength'] = (int) $element['attrib']['maxlength'];
 
 		$element['attrib']['name'] = $name;
+		$element['form_key'] = $name;
 		return $element;
 	}
 

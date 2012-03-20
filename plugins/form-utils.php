@@ -25,7 +25,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			array( 'attribute', 'carry', 'carry' ),
 			array( 'attribute', 'page', 'page_start' ),
 			array( 'attribute', 'pageorder', 'page_order' ),
-			array( 'attribute', 'topage', 'topage' )
+			array( 'attribute', 'topage', 'topage' ),
+			array( 'attribute', 'spinoff', 'spinoff_attribute' ),
+			array( 'start_el', 'spinoff', 'spinoff_element' )
 		));
 	}
 
@@ -204,7 +206,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 
 		if ( isset($element['attrib']['add-data']) ) {
-			$r = isset($element['attrib']['replaceseps']) ? htmlspecialchars_decode($element['attrib']['replaceseps']) : ',=';
+			$r = isset($element['attrib']['add-data-sep']) ? htmlspecialchars_decode($element['attrib']['add-data-sep']) : ',=';
 			$add_arr = array();
 			foreach ( explode( $r[0], $element['attrib']['add-data'] ) as $add ) {
 				$add = explode( $r[1], $add );
@@ -380,7 +382,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		);
 		$mime_types = array(
 			'csv' => 'text/csv',
-			'txt' => 'text/plain'
+			'txt' => 'text/plain',
+			'htm' => 'text/html',
+			'html' => 'text/html'
 		);
 		foreach ( $attachments as $filename => $content ) {
 			$suffix = substr( $filename, strrpos( $filename, '.' ) + 1 );
@@ -882,6 +886,175 @@ JS;
 				break;
 			}
 		}
+	}
+
+	/**
+	 * Spinoff form creation
+	 *
+	 * Create a form with the entered values to be sent along with an email and used e.g. for deferred manual submission
+	 * Inputs with the "spinoff" attribute will be carried over. If an attribute value is given, it is used as the key in the spinoff form.
+	 *  If, additionally, a "spinoff-translate" attribute is given, select and multi-checkbox fields will translate their values accordingly.
+	 *  The input format for spinoff-translate is "originalvalue=value_in_spinoff" with entries separated by ";".
+	 *
+	 * The <spinoff> element is to be used only as a child of <mail>. The following attributes are supported:
+	 * @attrib filename      Name of the spinoff file. Variables can be entered as "$fieldname$". Defaults to "spinoff.htm".
+	 * @attrib action        Target URL of the spinoff form
+	 * @attrib method        Spinoff form's submission method. Defaults to "post".
+	 * @attrib charset       Target character set. Defaults to UTF-8.
+	 * @attrib input-charset Character set used for incoming data. Defaults to UTF-8.
+	 * @attrib add-data      Data to add to the spinoff form, separated by add-data-sep (e.g. "key1=value1,key2=value2").
+	 *                       Prefix keys with an asterisk (*) to pass them as hidden inputs.
+	 *                       In values, you can insert data values as "$fieldname$". Encode literal '$' as "$$".
+	 * @attrib add-data-sep  Separator characters for add-data (see csv documentation). Defaults to ',='.
+	 *                       Note that the '$' character is not available as a separator.
+	 */
+	function spinoff_attribute( &$parser, $element, $value ) {
+		$element['remove_attrib'] = array( 'spinoff' );
+		if ( isset($element['form_key']) ) {
+			$parser->data[$this->parse_key][$element['form_key']]['spinoff'] = $value;
+			if ( isset( $element['attrib']['spinoff-translate'] ) ) {
+				$parser->data[$this->parse_key][$element['form_key']]['spinoff-translate'] = array();
+				$element['remove_attrib'][] = 'spinoff-translate';
+				foreach ( explode( ';', htmlspecialchars_decode($element['attrib']['spinoff-translate']) ) as $p ) {
+					$p = explode( '=', $p );
+					$parser->data[$this->parse_key][$element['form_key']]['spinoff-translate'][$p[0]] = isset($p[1]) ? $p[1] : '';
+				}
+			}
+		}
+		return $element;
+	}
+
+	function spinoff_element( &$parser, $element ) {
+		$element['suppress_tags'] = $element['suppress_nested'] = true;
+		if ( ! $this->in_mail )
+			return $element;
+
+		if ( empty($element['attrib']['filename']) )
+			$filename = 'spinoff.htm';
+		else
+			$filename = $this->parse_variable_string( $element['attrib']['filename'] );
+
+		$c_out = isset($element['attrib']['charset']) ? $element['attrib']['charset'] : 'utf-8';
+		$c_in = isset($element['attrib']['input-charset']) ? $element['attrib']['input-charset'] : 'utf-8';
+
+		if ( isset($element['attrib']['add-data']) ) {
+			$r = isset($element['attrib']['add-data-sep']) ? htmlspecialchars_decode($element['attrib']['add-data-sep']) : ',=';
+			$add_arr = array();
+			foreach ( explode( $r[0], $element['attrib']['add-data'] ) as $add ) {
+				$add = explode( $r[1], $add );
+				$add_arr[] = "'" . addcslashes(htmlspecialchars_decode($add[0]),"'\\") . "'=>'"
+				 . ( isset($add[1]) ? $this->parse_variable_string($add[1]) : '' ) . "'";
+			}
+			$add_data = 'array(' . implode( ',', $add_arr ) . ')';
+		} else {
+			$add_data = 'array()';
+		}
+
+		$action = $element['attrib']['action'];
+		$method = isset($element['attrib']['method']) ? $element['attrib']['method'] : 'POST';
+		$escape = $this->escape_data ? 'true' : 'false';
+
+		$parse_key = $this->on_page ? $this->parse_key_backup : $this->parse_key;
+
+		$class = get_class();
+		$this->attachments[$filename] = "$class::get_spinoff( \$templater, '$parse_key', $this->inst_var, '$c_out', '$c_in', '$action', '$method', $escape, $add_data )";
+
+		return $element;
+	}
+
+	static public function get_spinoff( &$templater, $parse_key, &$data, $charset, $input_charset, $action, $method, $escape, $add_data ) {
+		$str = <<<HTML
+<!DOCTYPE html>
+<html>
+ <head><title>Spinoff form</title><meta charset="$charset"></head>
+ <body>
+  <form action="$action" method="$method">
+   <table>
+    <thead><tr><th>Original key</th><th>Receiver's key</th><th>Value</th></tr></thead>
+    <tbody>
+HTML;
+
+		$struct_keys = array( $parse_key );
+		if ( isset($templater->data[$parse_key]['__pages']) )
+			foreach ( $templater->data[$parse_key]['__pages'] as $pageid )
+				$struct_keys[] = $parse_key . '_page_' . $pageid;
+		foreach ( array_intersect_key( $templater->data, array_flip($struct_keys) ) as $struct ) {
+			foreach ( $struct as $fkey => $field ) {
+				if ( isset( $field['spinoff'] ) ) {
+					if ( $field['spinoff'] )
+						$skey = $field['spinoff'];
+					else
+						$skey = $fkey;
+					$str .= "<tr><td>$field[name_orig]</td><td>$skey</td><td>";
+					if ( 'textarea' == $field['type'] ) {
+						$str .= "<textarea name='$skey'>";
+						if ( isset($data[$fkey]) ) {
+							$v = $escape ? htmlspecialchars($data[$fkey]) : $data[$fkey];
+							if ( $charset != $input_charset )
+								$v = iconv( $input_charset, $charset, $v );
+							$str .= $v;
+						}
+						$str .= "</textarea>";
+					} elseif ( 'select' == $field['type'] && ! $field['multiple'] || 'radio' == $field['type'] ) {
+						$str .= "<select name='$skey'>";
+						foreach ( $field['options'] as $okey => $oval ) {
+							$selected = isset($data[$fkey]) && $data[$fkey]==$okey || !isset($data[$fkey]) && $field['default']==$okey ? "selected='selected'" : "";
+							$tkey = isset($field['spinoff-translate'][$okey]) ? $field['spinoff-translate'][$okey] : $okey;
+							$str .= "<option value='$tkey' $selected>$oval</option>";
+						}
+						$str .= "</select>";
+					} elseif ( !empty($field['multiple']) && in_array( $field['type'], array( 'select', 'checkbox' ) ) ) {
+						$str .= "<select name='$skey' multiple='multiple'>";
+						foreach ( $field['options'] as $okey => $oval ) {
+							$selected = isset($data[$fkey]) && in_array($okey,$data[$fkey]) || !isset($data[$fkey]) && in_array($okey,$field['default']) ? "selected='selected'" : "";
+							$tkey = isset($field['spinoff-translate'][$okey]) ? $field['spinoff-translate'][$okey] : $okey;
+							$str .= "<option value='$tkey' $selected>$oval</option>";
+						}
+						$str .= "</select>";
+					} elseif ( 'checkbox' == $field['type'] ) {
+						$str .= "<input type='checkbox' name='$skey' " . ( empty($data[$fkey]) ? "" : "checked='checked'" ) . ">";
+					} else {
+						$str .= "<input type='$field[type]' name='$skey' value='";
+						if ( isset($data[$fkey]) ) {
+							$v = $escape ? htmlspecialchars($data[$fkey],ENT_QUOTES) : $data[$fkey];
+							if ( $charset != $input_charset )
+								$v = iconv( $input_charset, $charset, $v );
+							$str .= $v;
+						}
+						$str .= "'>";
+					}
+					$str .= "</td></tr>";
+				}
+			}
+		}
+
+		$hidden = array();
+		foreach ( $add_data as $key => $value ) {
+			$value = htmlspecialchars( $value, ENT_QUOTES );
+			if ( $charset != $input_charset )
+				$value = iconv( $input_charset, $charset, $value );
+
+			if ( 0 === strpos( $key, '*' ) )
+				$hidden[ substr($key, 1 ) ] = $value;
+			else
+				$str .= "<tr><td>&ndash;</td><td>$key</td><td><input type='text' name='$key' value='$value'></td></tr>";
+		}
+
+		if ( $hidden ) {
+			$str .= "<tr><td colspan='3'>";
+			foreach ( $hidden as $key => $value )
+				$str .= "<input type='hidden' name='$key' value='$value'>";
+			$str .= "</td></tr>";
+		}
+
+		$str .= <<<HTML
+   </tbody>
+   <tfoot><tr><td colspan="3"><input type="submit"></td></tr></tfoot>
+  </table>
+ </body>
+</html>
+HTML;
+		return $str;
 	}
 }
 ?>
