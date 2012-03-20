@@ -96,21 +96,21 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 			)
 			*/
 				if ( '[]' == substr( $name, -2 ) ) {
-					$name = substr( $name, 0, -2 );
-					if ( ! isset($parser->data[$this->parse_key][$name]) ) {
+					$name_deref = substr( $name, 0, -2 );
+					if ( ! isset($parser->data[$this->parse_key][$name_deref]) ) {
 						$data['multiple'] = true;
 						$data['options'] = array();
 						$data['default'] = array();
-						$parser->data[$this->parse_key][$name] = $data;
+						$parser->data[$this->parse_key][$name_deref] = $data;
 					}
-					$parser->data[$this->parse_key][$name]['options'][ $element['attrib']['value'] ]
+					$parser->data[$this->parse_key][$name_deref]['options'][ $element['attrib']['value'] ]
 					 = isset($element['attrib']['label']) ? $element['attrib']['label'] : $element['attrib']['value'];
 
-					$var = "{$this->inst_var}['$name']";
+					$var = "{$this->inst_var}['$name_deref']";
 					$val_check = "in_array( '" . $element['attrib']['value'] . "', $var )";
 
 					if ( isset($element['attrib']['checked']) ) {
-						$parser->data[$this->parse_key][$name]['default'][] = $element['attrib']['value'];
+						$parser->data[$this->parse_key][$name_deref]['default'][] = $element['attrib']['value'];
 						unset( $element['attrib']['checked'] );
 						$isset_check = "!isset($var) || !is_array($var) || ";
 					} else {
