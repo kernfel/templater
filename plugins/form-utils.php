@@ -4,13 +4,35 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public static $version = '1b15';
+	public static $version = '1b17';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 
 	protected $recaptcha_privatekey = false;
 
 	protected $pages = array(), $on_page = false;
+
+	public function __construct( &$templater, $args = array() ) {
+		$defaults = array(
+			'checkbox_on' => 'Yes',
+			'checkbox_off' => 'No'
+		);
+		$myargs = array_merge( $defaults, $args );
+		$this->checkbox_on = $myargs['checkbox_on'];
+		$this->checkbox_off = $myargs['checkbox_off'];
+
+		parent::__construct( $templater, $args );
+	}
+
+	protected function get_version_info() {
+		return array_merge(
+			parent::get_version_info(),
+			array(
+				'checkbox_on' => $this->checkbox_on,
+				'checkbox_off' => $this->checkbox_off
+			)
+		);
+	}
 
 	function get_handlers() {
 		return array_merge( parent::get_handlers(), array(
@@ -44,6 +66,11 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	 *  - after (optional): As above, but after the output.
 	 *
 	 * date (required): Output current date, formatted according to the attribute value (see php.net/date). Defaults to 'd.m.Y' if left empty.
+	 *
+	 * checkbox-list (required): Lists each of the field names given under the condition of its presence in the data.
+	 *      Separate field names with ",".
+	 *  - type (optional): 'ul' | 'ol' | 'div' - How to format the list. Other attributes (class, style etc.) are preserved from the <output> to the
+	 *      relevant element. If type is 'div', the list entries are separated with commas. Defaults to 'ul'. Disregarded inside <mail> elements.
 	 */
 	function output( &$parser, $element ) {
 		$element['suppress_tags'] = true;
@@ -74,12 +101,48 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		} elseif ( isset($element['attrib']['date']) ) {
 			$format = $element['attrib']['date'] ? addcslashes(htmlspecialchars_decode($element['attrib']['date']),"'\\") : 'd.m.Y';
 			$base_output = "date('$format')";
+		} elseif ( isset($element['attrib']['checkbox-list']) ) {
+			if ( ! $this->in_mail )
+				$element['suppress_tags'] = false;
+			$cbs = $element['attrib']['checkbox-list'];
+			unset( $element['attrib']['checkbox-list'] );
+			if ( isset( $element['attrib']['type'] ) ) {
+				$type = $element['attrib']['type'];
+				unset( $element['attrib']['type'] );
+			} else {
+				$type = 'ul';
+			}
+			$element['name'] = $type;
+
+			if ( ! $this->in_mail && ( 'ol' == $type || 'ul' == $type ) ) {
+				$before = '<li>';
+				$after = '</li>';
+				$implode = '</li><li>';
+			} else {
+				$before = $after = '';
+				$implode = ', ';
+			}
+
+			$names = array();
+			foreach ( explode( ',', $cbs ) as $cb )
+				$names[] = "'" . $this->sanitize_name($cb) . "'";
+			$names = 'array(' . implode( ',', $names ) . ')';
+
+			$class = get_class();
+			if ( $this->on_page )
+				$parse_key = $this->parse_key_backup;
+			else
+				$parse_key = $this->parse_key;
+
+			$base_output = "$class::get_checkbox_list( \$templater, '$parse_key', $this->inst_var, $names, '$implode', '$before', '$after' )";
 		}
 
 		if ( $this->in_mail )
 			$this->mail_insert_code( $base_output );
-		else
+		elseif ( $element['suppress_tags'] )
 			$element['before_start_el'] = "<?php echo $base_output; ?>";
+		else
+			$element['after_start_el'] = "<?php echo $base_output; ?>";
 
 		return $element;
 	}
@@ -99,6 +162,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		if ( ! isset($data[$key]) && ! isset($struct[$key]) )
 			return;
+
+		if ( isset($struct[$key]) && 'checkbox' == $struct[$key]['type'] && ! $struct[$key]['multiple'] )
+			return isset($data[$key]) ? $struct['__checkbox_on'] : $struct['__checkbox_off'];
 
 		if ( ! isset($data[$key]) ) {
 			if ( ! empty($struct[$key]['default']) )
@@ -128,6 +194,18 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		}
 	}
 
+	static public function get_checkbox_list( &$templater, $parse_key, $data, $fields, $sep, $before, $after ) {
+		$fields_in_list = array_intersect_key( $data, array_flip( $fields ) );
+		$struct_keys = array( $parse_key );
+		if ( isset($templater->data[$parse_key]['__pages']) )
+			foreach ( $templater->data[$parse_key]['__pages'] as $pageid )
+				$struct_keys[] = $parse_key . '_page_' . $pageid;
+		foreach ( array_intersect_key( $templater->data, array_flip( $struct_keys ) ) as $struct )
+			foreach( array_intersect_key( $struct, $fields_in_list ) as $key => $f )
+				$fields_in_list[$key] = isset($f['name_orig']) ? $f['name_orig'] : $key;
+		return $before . implode( $sep, $fields_in_list ) . $after;
+	}
+
 	/**
 	 * Print a CSV string with a header and a data line. If inside a <mail> element, will add the string as an attachment (default) or inline.
 	 *
@@ -154,6 +232,9 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 	 * @attrib special-replace   Like replace, only for specific fields. Formatted as 'fieldname:search=replace$...'. Separators :, = and $
 	 *                           are customisable, see below.
 	 * @attrib special-replace-sep  Separators for special replace. Defaults to '$=:'.
+	 * @attrib checkboxes        How to represent single checkboxes, e.g. "on,off" or "1,0". Defaults to the checkbox_on, checkbox_off parameters
+	 *                           given at init. Note that unchecked checkboxes will only be output if they've been included explicitly via the
+	 *                           include attribute.
 	 */
 	function csv( &$parser, $element ) {
 		$element['suppress_tags'] = true;
@@ -219,6 +300,12 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			$add_data = 'array()';
 		}
 
+		if ( isset($element['attrib']['checkboxes']) ) {
+			$cb = explode( ',', $element['attrib']['checkboxes'] );
+		} else {
+			$cb = array( $this->checkbox_on, $this->checkbox_off );
+		}
+
 		if ( $this->on_page )
 			$parse_key = $this->parse_key_backup;
 		else
@@ -226,7 +313,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$class = get_class();
 
-		$base_output = "$class::get_csv( $this->inst_var, \$templater, '$parse_key', '$sep', $replace, $special_replace, $inc, $charset, $add_data )";
+		$base_output = "$class::get_csv( $this->inst_var, \$templater, '$parse_key', '$sep', $replace, $special_replace, $inc, $charset, $add_data, '$cb[0]', '$cb[1]' )";
 
 		if ( $this->in_mail && empty($element['attrib']['inline']) ) {
 			$filename = isset($element['attrib']['filename']) ? $this->parse_variable_string( $element['attrib']['filename'] ) : "file.csv";
@@ -241,7 +328,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		return $element;
 	}
 
-	static public function get_csv( &$data, &$templater, $parse_key, $sep, $common_replace, $special_replace, $indices, $include, $charset, $input_charset, $add_data ) {
+	static public function get_csv( &$data, &$templater, $parse_key, $sep, $common_replace, $special_replace, $indices, $include, $charset, $input_charset, $add_data, $cb_on, $cb_off ) {
 		$indices = explode( ',', $indices );
 		if ( ! $include )
 			$indices = array_diff( array_keys($data), $indices );
@@ -266,6 +353,10 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 
 		$out = array();
 		foreach ( $indices_use as $index ) {
+			if ( 'checkbox' == $struct[$index]['type'] && ! $struct[$index]['multiple'] ) {
+				$out[] = isset($data[$index]) ? $cb_on : $cb_off;
+				continue;
+			}
 			if ( ! isset($data[$index]) ) {
 				$out[] = '';
 			} else {
@@ -739,6 +830,8 @@ PHP;
 		$r = parent::form( $parser, $element, $where );
 		if ( 'end_el' == $where ) {
 			$parser->data[$this->parse_key]['__pages'] = $this->pages;
+			$parser->data[$this->parse_key]['__checkbox_on'] = $this->checkbox_on;
+			$parser->data[$this->parse_key]['__checkbox_off'] = $this->checkbox_off;
 			return $r;
 		} else {
 			if ( $r )

@@ -96,6 +96,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 			*/
 				if ( '[]' == substr( $name, -2 ) ) {
 					$name_deref = substr( $name, 0, -2 );
+					$data['name_orig'] = substr( $name_original, 0, -2 );
 					if ( ! isset($parser->data[$this->parse_key][$name_deref]) ) {
 						$data['multiple'] = true;
 						$data['options'] = array();
