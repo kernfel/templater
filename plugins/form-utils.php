@@ -251,9 +251,13 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 			foreach ( $templater->data[$parse_key]['__pages'] as $p )
 				$struct_keys[] = $parse_key . '_page_' . $p;
 		$struct = call_user_func_array( 'array_merge', array_intersect_key( $templater->data, array_flip($struct_keys) ) );
-		$indices_out = array();
-		foreach ( $indices as $i )
-			$indices_out[] = isset($struct[$i]['name_orig']) ? $struct[$i]['name_orig'] : $i;
+		$indices_out = $indices_use = array();
+		foreach ( $indices as $i ) {
+			if ( isset($struct[$i]) ) {
+				$indices_out[] = isset($struct[$i]['name_orig']) ? $struct[$i]['name_orig'] : $i;
+				$indices_use[] = $i;
+			}
+		}
 
 		$csv = '"' . implode( '","', $indices_out ) . '"';
 		if ( $add_data )
@@ -261,7 +265,7 @@ class FBK_Form_Utils extends FBK_Form_Basics {
 		$csv .= "\r\n";
 
 		$out = array();
-		foreach ( $indices as $index ) {
+		foreach ( $indices_use as $index ) {
 			if ( ! isset($data[$index]) ) {
 				$out[] = '';
 			} else {

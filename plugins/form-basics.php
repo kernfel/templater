@@ -91,8 +91,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 				default => array( $value, ... )
 			) or array(
 				multiple => false,
-				default => boolean,
-				value => $value
+				default => boolean
 			)
 			*/
 				if ( '[]' == substr( $name, -2 ) ) {
@@ -121,17 +120,20 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 				} else {
 					$data['multiple'] = false;
 					$data['default'] = isset($element['attrib']['checked']);
-					$data['value'] = $element['attrib']['value'];
+					if ( isset($element['attrib']['value'] ) )
+						unset( $element['attrib']['value'] );
 
 					$var = "{$this->inst_var}['$name']";
-					$val_check = "'$data[value]'==$var";
 
 					if ( isset($element['attrib']['checked']) ) {
-						$data['default'] = true;
-						$isset_check = "!isset($var) || ";
+						$check = "{$this->inst_var}['__cb-$name']";
+						$isset_check = "isset($var) || ";
+						$val_check = "! isset($check)";
+						$element['after_end_el'] = "<input type=\"hidden\" name=\"__cb-$name\" value=\"1\" />";
 						unset( $element['attrib']['checked'] );
 					} else {
-						$isset_check = "isset($var) && ";
+						$isset_check = "isset($var)";
+						$val_check = '';
 					}
 				}
 				$element['attrib'][] = "<?php if ( $isset_check $val_check ) echo 'checked=\"checked\"'; ?>";
