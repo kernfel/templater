@@ -38,9 +38,7 @@ class FBK_Parser {
 
 	protected function parse( $source, $target ) {
 		$tpl = fopen( $source, 'rb' );
-
 		$this->target = fopen( $target, 'wb' );
-		ob_start( array( &$this, 'write' ), 4096 );
 
 		$ws = array( " ", "\t", "\r", "\n" );
 
@@ -67,7 +65,7 @@ class FBK_Parser {
 						$passthru = true;
 						$next = '>';
 						$bucket = '';
-						echo '<!' . $c;
+						fwrite( $this->target, '<!' . $c );
 					} elseif ( '?' == $c ) {
 						$passthru = false;
 						$next = '>';
@@ -136,7 +134,7 @@ class FBK_Parser {
 						$next = '<';
 						$state = false;
 						$bucket = '';
-						echo $c;
+						fwrite( $this->target, $c );
 					} elseif ( 'PI' == $state ) {
 						if ( '?' == substr( $bucket, -1 ) ) {
 							$next = '<';
@@ -149,20 +147,19 @@ class FBK_Parser {
 							$next = '<';
 							$state = false;
 						}
-						echo $c;
+						fwrite( $this->target, $c );
 						$bucket = '';
 					}
 				}
 			} elseif ( $passthru ) {
 				$bucket .= $c;
-				echo $c;
+				fwrite( $this->target, $c );
 			} else {
 				$bucket .= $c;
 			}
 		}
 
 		fclose( $tpl );
-		ob_end_flush();
 		fclose( $this->target );
 	}
 
@@ -185,11 +182,6 @@ class FBK_Parser {
 			'track',
 			'wbr'
 		);
-	}
-
-	function write( $buffer ) {
-		fwrite( $this->target, $buffer );
-		return '';
 	}
 
 	protected function start_el( $name, $attrib = array() ) {
@@ -269,17 +261,18 @@ class FBK_Parser {
 			}
 		}
 
-		echo $el['before_start_el'];
+		fwrite( $this->target, $el['before_start_el'] );
 
 		if ( ! $el['suppress_tags'] ) {
-			echo "<$el[name]";
+			$str = "<$el[name]";
 			foreach ( $el['attrib'] as $key => $value ) {
 				if ( is_string( $key ) )
-					echo " $key=\"$value\"";
+					$str .= " $key=\"$value\"";
 				else
-					echo " $value";
+					$str .= " $value";
 			}
 			$this->waiting_for_tag_end = true;
+			fwrite( $this->target, $str );
 		}
 
 		$this->parents[] = $el;
@@ -325,26 +318,28 @@ class FBK_Parser {
 
 		if ( $this->waiting_for_tag_end ) {
 			if ( in_array( $el['name'], $this->void_elements ) ) {
-				echo " />";
+				$str = " />";
 				$closed = true;
 			} else {
-				echo ">";
+				$str = ">";
 				$closed = false;
 			}
 				
-			echo $el['after_start_el'] . $el['before_end_el'];
+			$str .= $el['after_start_el'] . $el['before_end_el'];
 
 			if ( ! $closed )
-				echo "</$el[name]>";
+				$str .= "</$el[name]>";
 
 			$this->waiting_for_tag_end = false;
+			fwrite( $this->target, $str );
 		} else {
-			echo $el['before_end_el'];
+			$str = $el['before_end_el'];
 			if ( empty( $el['suppress_tags'] ) )
-				echo "</$el[name]>";
+				$str .= "</$el[name]>";
+			fwrite( $this->target, $str );
 		}
 
-		echo $el['after_end_el'];
+		fwrite( $this->target, $el['after_end_el'] );
 	}
 
 	protected function cdata( $cdata ) {
@@ -385,26 +380,27 @@ class FBK_Parser {
 			$str = false;
 
 		if ( is_string( $str ) ) {
-			echo $str;
+			$out = $str;
 		} elseif ( is_array( $str ) && isset($str['content']) ) {
 			if ( ! isset($str['position']) ) {
-				echo $str['content'];
+				$out = $str['content'];
 			} elseif ( is_int($str['position']) ) {
-				echo substr_replace( $cdata, $str['content'], $str['position'], 0 );
+				$out = substr_replace( $cdata, $str['content'], $str['position'], 0 );
 			} elseif ( 'before' == $str['position'] ) {
-				echo $str['content'] . $cdata;
+				$out = $str['content'] . $cdata;
 			} else {
-				echo $cdata . $str['content'];
+				$out = $cdata . $str['content'];
 			}
 		} else {
-			echo $cdata;
+			$out = $cdata;
 		}
+		fwrite( $this->target, $out );
 	}
 
 	protected function close_nonvoid_start_tag() {
 		if ( ! $this->waiting_for_tag_end || ! ( $parent = $this->get_current_element() ) )
 			return;
-		echo ">" . $parent['after_start_el'];
+		fwrite( $this->target, ">" . $parent['after_start_el'] );
 		$this->waiting_for_tag_end = false;
 	}
 

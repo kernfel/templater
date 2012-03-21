@@ -748,10 +748,7 @@ PHP;
 			ini_set( 'session.use_trans_sid', false );
 			if ( $sessname )
 				session_name( $sessname );
-			if ( headers_sent() ) // Prevent warning about sent headers; they most likely originate from a reparse.
-				@session_start();
-			else
-				session_start();
+			session_start();
 			$session_started = true;
 		}
 
