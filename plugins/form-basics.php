@@ -7,7 +7,7 @@ register_plugin( 'form-basics', 'FBK_Form_Basics' );
  */
 class FBK_Form_Basics extends FBK_Handler_Plugin {
 
-	public $version = '1.2';
+	public static $version = '1.3';
 
 	protected $default_inst_key = false;
 	protected $default_parse_key = 'form';
@@ -293,7 +293,7 @@ class FBK_Form_Basics extends FBK_Handler_Plugin {
 	}
 
 	function sanitize_name( $string ) {
-		return preg_replace( '/[ ,.$=\'"\x80-\x9F]/', '_', $string );
+		return preg_replace( '/[^\\[\\]a-zA-Z0-9_:-]/', '_', $string );
 	}
 }
 ?>

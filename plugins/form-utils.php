@@ -4,7 +4,7 @@ require_once( 'form-basics.php' );
 register_plugin( 'form-extended', 'FBK_Form_Utils' );
 
 class FBK_Form_Utils extends FBK_Form_Basics {
-	public $version = '1b15';
+	public static $version = '1b15';
 
 	protected $in_mail = false, $mail_body, $attachments, $insertions;
 

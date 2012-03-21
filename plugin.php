@@ -1,6 +1,6 @@
 <?php
 abstract class FBK_Handler_Plugin {
-	public $version = '__default__';
+	public static $version = '1';
 
 	public $escape_data;
 	public $inst_var;
@@ -31,7 +31,15 @@ abstract class FBK_Handler_Plugin {
 		$this->parse_key = $parse_data_key;
 		$this->set_struct_var();
 
-		$handler_version = serialize( array( $this->version, $instantiation_key, $parse_data_key, $escape_data ) );
+		$class = get_class($this);
+		$versions = array();
+		do {
+			// PHP < 5.3 does not allow dynamic $class::$static
+			$versions[$class] = eval( "return $class::\$version;" );
+			
+		} while ( $class = get_parent_class( $class ) );
+
+		$handler_version = serialize( array( $versions, $instantiation_key, $parse_data_key, $escape_data, $this->get_version_info() ) );
 		foreach ( $this->get_handlers() as $handler ) {
 			$templater->add_handler( $handler[0], $handler[1], array( &$this, $handler[2] ), $handler_version );
 		}
@@ -55,6 +63,13 @@ abstract class FBK_Handler_Plugin {
 
 	protected function set_struct_var() {
 		$this->struct_var = "\$templater->data['$this->parse_key']";
+	}
+
+	/**
+	 * If a plugin uses further parameters in __construct, provide them here so as to complete versioning.
+	 */
+	protected function get_version_info() {
+		return array();
 	}
 }
 
